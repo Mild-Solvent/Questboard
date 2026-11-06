@@ -1,0 +1,4 @@
+/* Browser build: no window chrome, no startup toggle, no local data folder. */
+html.web #btn-min, html.web #btn-hide, html.web #btn-autostart, html.web #btn-open-data, html.web #btn-update { display: none !important; }
+html.web #titlebar { -webkit-app-region: no-drag; }
+html.web #boards { touch-action: pan-y; }
