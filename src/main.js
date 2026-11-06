@@ -91,22 +91,68 @@ function ensureAutostartOnFirstRun() {
 }
 
 // ---------- updates ----------
+// Checks GitHub releases on start, every 2 h, when the window is shown after a while, and on demand.
+// A downloaded update installs by itself as soon as the window is hidden in the tray (silent install,
+// app comes back hidden); while the window is open the footer offers "restart to update".
 function send(channel, payload) { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); }
+const updaterLogPath = () => path.join(app.getPath('userData'), 'updater.log');
+const relaunchHiddenPath = () => path.join(app.getPath('userData'), 'relaunch-hidden');
+function ulog(line) {
+  try {
+    const p = updaterLogPath();
+    if (fs.existsSync(p) && fs.statSync(p).size > 256 * 1024) fs.renameSync(p, p + '.old');
+    fs.appendFileSync(p, `${new Date().toISOString()} v${app.getVersion()} ${line}\n`);
+  } catch { /* logging must never break the app */ }
+}
+let updateState = { state: 'idle' };
+let lastCheck = 0;
+let checking = false;
+function setUpdateState(st) { updateState = st; send('update:status', st); }
+function checkForUpdates(manual) {
+  if (!autoUpdater || !app.isPackaged) {
+    setUpdateState({ state: 'unavailable', manual, message: 'Updates work in the installed app only.' });
+    return;
+  }
+  if (updateReady) { setUpdateState({ state: 'ready', version: updateReady, manual }); return; }
+  if (checking) { if (manual) setUpdateState({ ...updateState, manual }); return; }
+  checking = true; lastCheck = Date.now();
+  setUpdateState({ state: 'checking', manual });
+  autoUpdater.checkForUpdates().catch((e) => {
+    checking = false;
+    ulog(`check failed: ${e && e.message}`);
+    setUpdateState({ state: 'error', manual, message: String((e && e.message) || e).split('\n')[0].slice(0, 160) });
+  });
+}
 function setupUpdater() {
   if (!autoUpdater || !app.isPackaged) return;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('update-available', (info) => send('update:status', { state: 'downloading', version: info.version }));
-  autoUpdater.on('update-downloaded', (info) => { updateReady = info.version; send('update:status', { state: 'ready', version: info.version }); rebuildTray(); });
-  autoUpdater.on('error', (e) => console.error('updater', e && e.message));
-  const check = () => autoUpdater.checkForUpdates().catch(() => {});
-  setTimeout(check, 12000);
-  setInterval(check, 4 * 60 * 60 * 1000);
+  autoUpdater.logger = { info: (m) => ulog(`info ${m}`), warn: (m) => ulog(`warn ${m}`), error: (m) => ulog(`error ${m}`), debug: () => {} };
+  autoUpdater.on('update-available', (info) => { setUpdateState({ state: 'downloading', version: info.version, percent: 0, manual: updateState.manual }); });
+  autoUpdater.on('update-not-available', () => { checking = false; setUpdateState({ state: 'none', manual: updateState.manual }); });
+  autoUpdater.on('download-progress', (p) => setUpdateState({ ...updateState, state: 'downloading', percent: Math.round(p.percent || 0) }));
+  autoUpdater.on('update-downloaded', (info) => {
+    checking = false; updateReady = info.version;
+    ulog(`downloaded ${info.version}`);
+    setUpdateState({ state: 'ready', version: info.version, manual: updateState.manual });
+    rebuildTray();
+    if (!win || !win.isVisible()) installUpdate({ silent: true });
+  });
+  autoUpdater.on('error', (e) => {
+    checking = false;
+    ulog(`error ${e && e.message}`);
+    setUpdateState({ state: 'error', manual: updateState.manual, message: String((e && e.message) || e).split('\n')[0].slice(0, 160) });
+  });
+  setTimeout(() => checkForUpdates(false), 12000);
+  setInterval(() => checkForUpdates(false), 2 * 60 * 60 * 1000);
 }
-function installUpdate() {
+function installUpdate(opts) {
   if (!autoUpdater || !updateReady) return;
+  const silent = !!(opts && opts.silent);
+  ulog(`installing ${updateReady}${silent ? ' (silent, from tray)' : ''}`);
+  if (silent) writeFileSafe(relaunchHiddenPath(), updateReady);
   quitting = true;
-  autoUpdater.quitAndInstall(false, true);
+  autoUpdater.quitAndInstall(silent, true);
 }
 
 // ---------- window ----------
@@ -118,11 +164,18 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.once('ready-to-show', () => { win.show(); win.focus(); });
+  // After a silent update from the tray the app comes back where it was: hidden.
+  let startHidden = false;
+  try { if (fs.existsSync(relaunchHiddenPath())) { startHidden = true; fs.unlinkSync(relaunchHiddenPath()); } } catch { /* ignore */ }
+  win.once('ready-to-show', () => { if (!startHidden) { win.show(); win.focus(); } });
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
   // Hidden in the tray the renderer idles: no animation frames, lower priority, and a GC hint.
   win.on('hide', () => { win.webContents.setBackgroundThrottling(true); setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.webContents.send('app:idle', true); }, 1000); });
-  win.on('show', () => win.webContents.send('app:idle', false));
+  win.on('show', () => {
+    win.webContents.send('app:idle', false);
+    if (Date.now() - lastCheck > 30 * 60 * 1000) checkForUpdates(false);
+  });
+  win.on('hide', () => { if (updateReady) setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) installUpdate({ silent: true }); }, 1500); });
   win.on('closed', () => { win = null; });
 }
 function showWindow() {
@@ -139,8 +192,8 @@ function rebuildTray() {
     { type: 'separator' },
     { label: 'Launch when Windows starts', type: 'checkbox', checked: autostartEnabled(), enabled: app.isPackaged, click: (item) => { setAutostart(item.checked); rebuildTray(); } },
     updateReady
-      ? { label: `Restart to update to v${updateReady}`, click: installUpdate }
-      : { label: 'Check for updates', enabled: !!autoUpdater && app.isPackaged, click: () => autoUpdater.checkForUpdates().catch(() => {}) },
+      ? { label: `Restart to update to v${updateReady}`, click: () => installUpdate() }
+      : { label: 'Check for updates', enabled: !!autoUpdater && app.isPackaged, click: () => { showWindow(); checkForUpdates(true); } },
     { type: 'separator' },
     { label: `Questboard v${app.getVersion()}`, enabled: false },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
@@ -168,7 +221,9 @@ ipcMain.on('window:hide', () => win && win.hide());
 ipcMain.on('window:quit', () => { quitting = true; app.quit(); });
 ipcMain.on('app:openExternal', (_e, url) => { if (/^https?:\/\//.test(String(url))) shell.openExternal(url); });
 ipcMain.on('app:openDataDir', () => shell.openPath(dataDir()));
-ipcMain.on('update:install', installUpdate);
+ipcMain.on('update:install', () => installUpdate());
+ipcMain.on('update:check', () => checkForUpdates(true));
+ipcMain.handle('update:state', () => updateState);
 
 // ---------- lifecycle ----------
 app.whenReady().then(() => {

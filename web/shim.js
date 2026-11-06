@@ -35,6 +35,8 @@
     openExternal: (url) => window.open(url, '_blank', 'noopener'),
     openDataDir: () => {},
     installUpdate: () => {},
+    checkUpdate: () => {},
+    updateState: async () => ({ state: 'idle' }),
     onQuestsChanged: () => {},
     onUpdateStatus: () => {},
     onIdle: () => {},

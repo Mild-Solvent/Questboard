@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('questboard', {
   openExternal: (url) => ipcRenderer.send('app:openExternal', url),
   openDataDir: () => ipcRenderer.send('app:openDataDir'),
   installUpdate: () => ipcRenderer.send('update:install'),
+  checkUpdate: () => ipcRenderer.send('update:check'),
+  updateState: () => ipcRenderer.invoke('update:state'),
   onQuestsChanged: (cb) => ipcRenderer.on('quests:changed', (_e, text) => cb(text)),
   onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, s) => cb(s)),
   onIdle: (cb) => ipcRenderer.on('app:idle', (_e, v) => cb(v)),
