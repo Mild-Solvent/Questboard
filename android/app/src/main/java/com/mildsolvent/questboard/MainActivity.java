@@ -11,7 +11,6 @@ import android.view.Window;
 import android.webkit.ConsoleMessage;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -21,14 +20,15 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
-import androidx.webkit.WebViewAssetLoader;
 
 /**
  * Questboard for Android: a full-screen WebView running the same Tavern/Abyss board as the
  * desktop app. The page talks to {@link Bridge} for files, prefs and HTTP (quest sync).
  */
 public class MainActivity extends Activity {
-    private static final String START_URL = "https://appassets.androidapp.com/assets/www/index.html";
+    // The board ships inside the APK and is loaded straight from its assets: no network, no
+    // URL interception, works offline like the desktop app. Sync goes through Bridge.http.
+    private static final String START_URL = "file:///android_asset/www/index.html";
 
     private WebView web;
     private Bridge bridge;
@@ -54,7 +54,7 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
-        s.setAllowFileAccess(false);
+        s.setAllowFileAccess(true);             // needed for file:///android_asset on API 30+
         s.setAllowContentAccess(false);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
@@ -66,19 +66,11 @@ public class MainActivity extends Activity {
         bridge = new Bridge(this, web);
         web.addJavascriptInterface(bridge, "AndroidBridge");
 
-        final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .build();
         web.setWebViewClient(new WebViewClient() {
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                return loader.shouldInterceptRequest(request.getUrl());
-            }
-
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri u = request.getUrl();
-                if ("appassets.androidapp.com".equals(u.getHost())) return false;
+                if ("file".equals(u.getScheme())) return false;
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) { }
                 return true;
             }
