@@ -23,6 +23,7 @@
     theme: 'tavern', sound: true,
     sync: { baseUrl: '', token: '' },
     base: { questsText: '', questsEtag: null, progressText: '', progressEtag: null },
+    layout: { mode: 'grid', pos: {} },
   });
 
   // ---------- persistence ----------
@@ -129,8 +130,89 @@
       boards.appendChild(wrap);
     });
     boards.scrollTop = scroll;
+    applyLayout();
     renderHero();
   }
+
+  // ---------- free layout (drag boards around like a corkboard) ----------
+  function applyLayout() {
+    const free = settings.layout.mode === 'free';
+    boards.classList.toggle('free', free);
+    $('#btn-tidy').hidden = !free;
+    if (!free) { $$('.board-wrap', boards).forEach((w) => { w.style.left = w.style.top = w.style.width = ''; }); return; }
+    const pos = settings.layout.pos;
+    // boards that have no saved spot get one from the grid position they would have had
+    const missing = $$('.board-wrap', boards).filter((w) => !pos[w.dataset.group]);
+    if (missing.length) {
+      boards.classList.remove('free');
+      const origin = boards.getBoundingClientRect();
+      missing.forEach((w) => { const r = w.getBoundingClientRect(); pos[w.dataset.group] = { x: r.left - origin.left + boards.scrollLeft, y: r.top - origin.top + boards.scrollTop, w: r.width }; });
+      boards.classList.add('free');
+      saveSettings();
+    }
+    let maxX = 0, maxY = 0;
+    $$('.board-wrap', boards).forEach((w) => {
+      const p = pos[w.dataset.group];
+      w.style.left = `${p.x}px`; w.style.top = `${p.y}px`; w.style.width = `${p.w}px`;
+      maxX = Math.max(maxX, p.x + p.w); maxY = Math.max(maxY, p.y + w.offsetHeight);
+    });
+    let spacer = $('.canvas-spacer', boards);
+    if (!spacer) { spacer = document.createElement('div'); spacer.className = 'canvas-spacer'; boards.appendChild(spacer); }
+    spacer.style.left = `${maxX + 40}px`; spacer.style.top = `${maxY + 40}px`;
+  }
+
+  function tidyBoards() {
+    settings.layout = { mode: 'grid', pos: {} };
+    saveSettings();
+    render();
+    toast('Boards tidied back into the grid.');
+  }
+
+  // Drag starts on a board's head or empty background, never on quests, buttons or inputs.
+  let drag = null;
+  let zTop = 10;
+  boards.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const wrap = e.target.closest('.board-wrap');
+    if (!wrap || e.target.closest('.quest, button, input, form, summary, details, .add-row')) return;
+    if (settings.layout.mode !== 'free') {
+      settings.layout.mode = 'free';
+      applyLayout();                                   // freezes everything where it is
+    }
+    const p = settings.layout.pos[wrap.dataset.group];
+    drag = { wrap, sx: e.clientX, sy: e.clientY, ox: p.x, oy: p.y, moved: false, id: e.pointerId };
+    wrap.setPointerCapture(e.pointerId);
+    wrap.classList.remove('nailing');
+    wrap.classList.add('lifted');
+    wrap.style.zIndex = String(++zTop);
+    Sound.lift();
+    e.preventDefault();
+  });
+  boards.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+    drag.moved = true;
+    const p = settings.layout.pos[drag.wrap.dataset.group];
+    p.x = Math.max(0, drag.ox + dx); p.y = Math.max(0, drag.oy + dy);
+    drag.wrap.style.left = `${p.x}px`; drag.wrap.style.top = `${p.y}px`;
+  });
+  function endDrag(e) {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    const { wrap } = drag;
+    drag = null;
+    wrap.classList.remove('lifted');
+    wrap.classList.add('nailing');
+    setTimeout(() => wrap.classList.remove('nailing'), 700);
+    const r = wrap.getBoundingClientRect();
+    const nx = parseFloat(getComputedStyle(wrap).getPropertyValue('--nx')) || 0;
+    FX.burst(r.left + r.width / 2 + nx, r.top + 4, { count: 18, power: 0.6 });
+    Sound.nail();
+    saveSettings();
+    applyLayout();
+  }
+  boards.addEventListener('pointerup', endDrag);
+  boards.addEventListener('pointercancel', endDrag);
 
   function questEl(g, q) {
     const li = tplQuest.content.firstElementChild.cloneNode(true);
@@ -392,6 +474,7 @@
     settings = Object.assign(defaultSettings(), (await readJson('settings.json')) || {});
     settings.sync = Object.assign({ baseUrl: '', token: '' }, settings.sync || {});
     settings.base = Object.assign(defaultSettings().base, settings.base || {});
+    settings.layout = Object.assign({ mode: 'grid', pos: {} }, settings.layout || {});
     progress = Object.assign({ log: [], removed: [] }, (await readJson('progress.json')) || {});
     // migrate v0.2 state.json (xp counter + log + prefs)
     const legacy = await readJson('state.json');
@@ -447,6 +530,7 @@
     $('#btn-min').addEventListener('click', () => api.minimize());
     $('#btn-hide').addEventListener('click', () => api.hide());
     $('#btn-open-data').addEventListener('click', () => api.openDataDir());
+    $('#btn-tidy').addEventListener('click', tidyBoards);
     $('#btn-update').addEventListener('click', () => api.installUpdate());
 
     window.addEventListener('keydown', (e) => {

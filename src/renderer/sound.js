@@ -66,6 +66,13 @@
         noise({ dur: 0.12, gain: 0.12, hp: 2000 });
       }
     },
+    lift() { if (!enabled) return; noise({ dur: 0.08, gain: 0.12, hp: 2500 }); tone({ freq: 320, type: 'triangle', dur: 0.12, gain: 0.12, slide: 180 }); },
+    nail() {
+      if (!enabled) return;
+      const theme = (window.FX && window.FX.theme) || 'tavern';
+      if (theme === 'abyss') { tone({ freq: 900, type: 'sine', dur: 0.12, gain: 0.25, slide: -300 }); tone({ freq: 1400, type: 'sine', t0: 0.08, dur: 0.2, gain: 0.15 }); return; }
+      [0, 0.13].forEach((t) => { noise({ t0: t, dur: 0.07, gain: 0.35, hp: 900 }); tone({ freq: 140, type: 'square', t0: t, dur: 0.09, gain: 0.25, slide: -60 }); tone({ freq: 2400, type: 'sine', t0: t, dur: 0.05, gain: 0.08 }); });
+    },
     undo() { if (!enabled) return; tone({ freq: 440, type: 'triangle', dur: 0.2, gain: 0.25, slide: -220 }); },
     add() { if (!enabled) return; tone({ freq: 880, type: 'sine', dur: 0.12, gain: 0.25 }); tone({ freq: 1320, type: 'sine', t0: 0.06, dur: 0.15, gain: 0.2 }); },
     levelUp() {
