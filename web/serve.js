@@ -23,7 +23,7 @@ const ALLOWED = new Set(['QUESTS.md', 'progress.json', 'health']);
 const token = () => fs.readFileSync(tokenFile, 'utf8').trim();
 
 function proxy(req, res, file) {
-  if (!ALLOWED.has(file)) { res.writeHead(404); return res.end('no such file'); }
+  if (!ALLOWED.has(file) && !/^history\/(QUESTS\.md|progress\.json)(\/\d{8}T\d{12}Z\.(md|json))?$/.test(file)) { res.writeHead(404); return res.end('no such file'); }
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
   req.on('end', () => {

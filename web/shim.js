@@ -26,6 +26,7 @@
   window.questboard = {
     readFile: async (name) => store.get(name),
     writeFile: async (name, text) => { store.set(name, text); return true; },
+    listBackups: async () => [],
     getAutostart: async () => ({ enabled: false, available: false }),
     setAutostart: async () => false,
     appInfo: async () => ({ version: cfg.version, packaged: true, dataDir: 'browser storage', launchedAtStartup: false, updateReady: false, device: cfg.device }),

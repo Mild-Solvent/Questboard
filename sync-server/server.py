@@ -8,6 +8,11 @@ Runs on the devbox; exposed through `tailscale funnel`. Stdlib only.
   PUT  /questboard/<file>              -> full body; If-Match: "<etag>" required once the file exists.
                                           412 + current body + ETag on mismatch. 200/201 + new ETag on success.
 
+  GET  /questboard/history/<file>      -> JSON list of saved versions, newest first   (Bearer token)
+  GET  /questboard/history/<file>/<id> -> that version's body                          (Bearer token)
+
+Every accepted write that changes a file is also kept in <data>/history/<file>/<UTC time>.<ext>,
+so any earlier board can be restored (fetch a version, then PUT it back like a normal edit).
 Files allowed: QUESTS.md, progress.json. Data dir and token file come from env or defaults.
 """
 import hashlib
@@ -15,7 +20,9 @@ import json
 import os
 import secrets
 import sys
+import re
 import threading
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DATA_DIR = os.environ.get("QB_DATA_DIR", os.path.expanduser("~/questboard-data"))
@@ -24,6 +31,9 @@ PORT = int(os.environ.get("QB_PORT", "8787"))
 PREFIX = "/questboard/"
 FILES = {"QUESTS.md": "text/markdown; charset=utf-8", "progress.json": "application/json; charset=utf-8"}
 LOCK = threading.Lock()
+HISTORY_DIR = os.path.join(DATA_DIR, "history")
+HISTORY_KEEP = int(os.environ.get("QB_HISTORY_KEEP", "5000"))   # versions kept per file (they are a few KB each)
+VERSION_ID = re.compile(r"^\d{8}T\d{6}\d{6}Z\.(md|json)$")
 
 
 def load_token():
@@ -57,6 +67,55 @@ def write_file(name, data: bytes):
     with open(tmp, "wb") as f:
         f.write(data)
     os.replace(tmp, p)
+
+
+def history_dir(name):
+    return os.path.join(HISTORY_DIR, name)
+
+
+def snapshot(name, data: bytes):
+    """Keep a copy of this version of `name`; skip if identical to the newest kept copy."""
+    d = history_dir(name)
+    os.makedirs(d, exist_ok=True)
+    versions = sorted(os.listdir(d))
+    if versions:
+        with open(os.path.join(d, versions[-1]), "rb") as f:
+            if f.read() == data:
+                return
+    ext = name.rsplit(".", 1)[1]
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    with open(os.path.join(d, f"{stamp}.{ext}"), "wb") as f:
+        f.write(data)
+    for old in versions[: max(0, len(versions) + 1 - HISTORY_KEEP)]:
+        os.remove(os.path.join(d, old))
+
+
+def summarize(name, data: bytes):
+    text = data.decode("utf-8", "replace")
+    if name == "QUESTS.md":
+        open_q = len(re.findall(r"^\s*[-*] \[ \]", text, re.M))
+        done_q = len(re.findall(r"^\s*[-*] \[[xX]\]", text, re.M))
+        boards = len(re.findall(r"^## ", text, re.M))
+        return {"open": open_q, "done": done_q, "boards": boards}
+    try:
+        return {"log": len(json.loads(text).get("log", []))}
+    except Exception:
+        return {}
+
+
+def list_history(name, limit=400):
+    d = history_dir(name)
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for v in sorted(os.listdir(d), reverse=True)[:limit]:
+        if not VERSION_ID.match(v):
+            continue
+        with open(os.path.join(d, v), "rb") as f:
+            data = f.read()
+        at = datetime.strptime(v.split(".")[0], "%Y%m%dT%H%M%S%fZ").replace(tzinfo=timezone.utc)
+        out.append({"id": v, "at": at.isoformat().replace("+00:00", "Z"), "size": len(data), **summarize(name, data)})
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -96,6 +155,20 @@ class Handler(BaseHTTPRequestHandler):
         name = self._route()
         if name == "health":
             return self._send(200, b'{"ok":true}')
+        if name and name.startswith("history/"):
+            if not self._authed():
+                return self._send(401, b'{"error":"unauthorized"}')
+            parts = name.split("/")
+            if len(parts) == 2 and parts[1] in FILES:
+                with LOCK:
+                    items = list_history(parts[1])
+                return self._send(200, json.dumps(items).encode())
+            if len(parts) == 3 and parts[1] in FILES and VERSION_ID.match(parts[2]):
+                p = os.path.join(history_dir(parts[1]), parts[2])
+                if os.path.exists(p):
+                    with open(p, "rb") as f:
+                        return self._send(200, f.read(), FILES[parts[1]])
+            return self._send(404, b'{"error":"not found"}')
         if name not in FILES:
             return self._send(404, b'{"error":"not found"}')
         if not self._authed():
@@ -128,11 +201,19 @@ class Handler(BaseHTTPRequestHandler):
                 if if_match is None or if_match.strip() != etag_of(current):
                     return self._send(412, current, FILES[name], etag_of(current))
             write_file(name, body)
+            try:
+                snapshot(name, body)
+            except OSError as e:  # a failed backup must never fail the write itself
+                sys.stderr.write(f"history snapshot failed for {name}: {e}\n")
         self._send(200 if current is not None else 201, b'{"ok":true}', etag=etag_of(body))
 
 
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
+    for name in FILES:  # make sure the current board is in the history from the first start on
+        data = read_file(name)
+        if data is not None:
+            snapshot(name, data)
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"questboard sync on http://127.0.0.1:{PORT}{PREFIX}  data={DATA_DIR}", flush=True)
     httpd.serve_forever()

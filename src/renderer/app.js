@@ -62,7 +62,7 @@
     const today = new Date().toDateString();
     $('#stat-today').textContent = progress.log.filter((e) => new Date(e.at).toDateString() === today).length;
     $('#stat-total').textContent = progress.log.length;
-    $('#stat-open').textContent = doc.groups.flatMap((g) => g.items).filter((i) => i.type === 'quest' && !i.done).length;
+    $('#stat-open').textContent = doc.groups.reduce((n, g) => n + g.items.filter((i) => i.type === 'quest' && !doneNow(g, i)).length, 0);
   }
 
   // ---------- rendering ----------
@@ -77,6 +77,28 @@
     return esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
   }
   function isFeatured(g) { return /^active\b/i.test(g.title); }
+  // Daily boards: "## Life [daily]". Their quests never move to Completed; a tick lasts 9 hours and
+  // is read from the progress log, so every device agrees and nothing has to be un-ticked by hand.
+  const DAILY_RE = /\s*\[daily\]\s*$/i;
+  const DAILY_MS = 9 * 60 * 60 * 1000;
+  const isDaily = (g) => DAILY_RE.test(g.title);
+  const groupKey = (g) => g.title.replace(DAILY_RE, '');            // name used for looks and layout
+  function dailyEntry(q) {
+    const k = norm(q.text), now = Date.now();
+    let best = null;
+    for (const e of progress.log) {
+      if (norm(e.text) !== k) continue;
+      const t = Date.parse(e.at);
+      if (now - t < DAILY_MS && (!best || t > Date.parse(best.at))) best = e;
+    }
+    return best;
+  }
+  const doneNow = (g, q) => q.done || (isDaily(g) && !!dailyEntry(q));
+  function toggleDaily(g) {
+    g.title = isDaily(g) ? groupKey(g) : `${groupKey(g)} [daily]`;
+    changed(); render();
+    toast(isDaily(g) ? `${groupKey(g)} is a daily board now: ticks reset 9 hours after you make them.` : `${groupKey(g)} is a normal board again.`);
+  }
   function seeded(str, salt) {
     let h = 2166136261 ^ salt;
     for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -115,34 +137,45 @@
       const wrap = tplGroup.content.firstElementChild.cloneNode(true);
       const el = $('.board', wrap);
       wrap.style.setProperty('--i', i);
-      wrap.style.setProperty('--rot', `${seeded(g.title, 1) * 3 - 1.5}deg`);
-      wrap.style.setProperty('--nx', `${Math.round(seeded(g.title, 2) * 40 - 20)}px`);
+      wrap.style.setProperty('--rot', `${seeded(groupKey(g), 1) * 3 - 1.5}deg`);
+      wrap.style.setProperty('--nx', `${Math.round(seeded(groupKey(g), 2) * 40 - 20)}px`);
       const featured = isFeatured(g);
-      const earPick = seeded(g.title, 7);
+      const earPick = seeded(groupKey(g), 7);
       const ear = featured ? (earPick < 0.6 ? 'l' : '') : (earPick < 0.35 ? 'l' : earPick < 0.7 ? 'r' : '');
-      el.style.setProperty('--tear', tornEdge(g.title, ear));
+      el.style.setProperty('--tear', tornEdge(groupKey(g), ear));
       if (ear) el.dataset.ear = ear;
       // age spots and fold creases, placed per scrap so every paper looks different
-      el.style.setProperty('--s1x', `${Math.round(10 + seeded(g.title, 11) * 80)}%`);
-      el.style.setProperty('--s1y', `${Math.round(10 + seeded(g.title, 12) * 80)}%`);
-      el.style.setProperty('--s2x', `${Math.round(10 + seeded(g.title, 13) * 80)}%`);
-      el.style.setProperty('--s2y', `${Math.round(10 + seeded(g.title, 14) * 80)}%`);
-      el.style.setProperty('--fx', `${Math.round(30 + seeded(g.title, 15) * 40)}%`);
-      el.style.setProperty('--fy', `${Math.round(35 + seeded(g.title, 16) * 30)}%`);
-      wrap.dataset.group = g.title;
+      el.style.setProperty('--s1x', `${Math.round(10 + seeded(groupKey(g), 11) * 80)}%`);
+      el.style.setProperty('--s1y', `${Math.round(10 + seeded(groupKey(g), 12) * 80)}%`);
+      el.style.setProperty('--s2x', `${Math.round(10 + seeded(groupKey(g), 13) * 80)}%`);
+      el.style.setProperty('--s2y', `${Math.round(10 + seeded(groupKey(g), 14) * 80)}%`);
+      el.style.setProperty('--fx', `${Math.round(30 + seeded(groupKey(g), 15) * 40)}%`);
+      el.style.setProperty('--fy', `${Math.round(35 + seeded(groupKey(g), 16) * 30)}%`);
+      wrap.dataset.group = groupKey(g);
       if (isFeatured(g)) { wrap.classList.add('featured'); el.classList.add('featured'); }
-      const cleanTitle = g.title.replace(/^active:\s*/i, '');
+      const cleanTitle = groupKey(g).replace(/^active:\s*/i, '');
       $('.board-title', el).innerHTML = inline(cleanTitle);
       $('.board-glyph', el).textContent = GLYPHS[Object.keys(GLYPHS).find((k) => new RegExp(k, 'i').test(cleanTitle))] || cleanTitle.replace(/\W/g, '').charAt(0).toUpperCase();
       const quests = g.items.filter((x) => x.type === 'quest');
-      const open = quests.filter((x) => !x.done);
+      const daily = isDaily(g);
+      const open = daily ? quests.filter((x) => !x.done) : quests.filter((x) => !x.done);
       const done = quests.filter((x) => x.done);
-      $('.board-count', el).textContent = quests.length ? `${open.length} open` : '';
+      const left = daily ? open.filter((x) => !dailyEntry(x)).length : open.length;
+      $('.board-count', el).textContent = quests.length ? (daily ? `${left} left today` : `${open.length} open`) : '';
+      el.classList.toggle('daily', daily);
+      const dbtn = document.createElement('button');
+      dbtn.type = 'button'; dbtn.className = 'daily-toggle' + (daily ? ' on' : '');
+      dbtn.textContent = daily ? '↻ daily' : '↻';
+      dbtn.title = daily ? 'Daily board: ticks stay on the board and reset 9 hours later. Click to make it a normal board.' : 'Make this a daily board (ticks reset 9 hours after you make them)';
+      dbtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDaily(g); });
+      $('.board-head', el).appendChild(dbtn);
 
       const ul = $('.quests', el);
       open.forEach((q) => ul.appendChild(questEl(g, q)));
       if (!quests.length && !g.items.some((x) => x.type !== 'quest')) {
         const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'Nothing here yet.'; ul.appendChild(e);
+      } else if (daily && open.length && !left) {
+        const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'All done for today. See you tomorrow.'; ul.appendChild(e);
       } else if (quests.length && !open.length) {
         const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'Board cleared. Legendary.'; ul.appendChild(e);
       }
@@ -162,6 +195,7 @@
   }
 
   // ---------- free layout (drag boards around like a corkboard) ----------
+  let drag = null;
   function applyLayout() {
     const free = settings.layout.mode === 'free';
     boards.classList.toggle('free', free);
@@ -178,9 +212,33 @@
       saveSettings();
     }
     let maxX = 0, maxY = 0;
-    $$('.board-wrap', boards).forEach((w) => {
+    const items = $$('.board-wrap', boards).map((w) => {
       const p = pos[w.dataset.group];
-      w.style.left = `${p.x}px`; w.style.top = `${p.y}px`; w.style.width = `${p.w}px`;
+      w.style.left = `${p.x}px`; w.style.width = `${p.w}px`;
+      return { w, p };
+    });
+    // Papers never overlap: a board that grew (more quests, "completed" opened) pushes the boards
+    // below it down, the way stacked notes would. Pushed spots are saved so dragging stays smooth.
+    if (!drag) {
+      const placed = [];
+      let moved = false;
+      items.slice().sort((a, b) => a.p.y - b.p.y || a.p.x - b.p.x).forEach((it) => {
+        const h = it.w.offsetHeight;
+        let top = it.p.y, bumped = true;
+        while (bumped) {
+          bumped = false;
+          for (const o of placed) {
+            const overlapX = it.p.x < o.x + o.w - 14 && o.x < it.p.x + it.p.w - 14;
+            if (overlapX && top < o.bottom + 22 && top + h > o.top) { top = o.bottom + 22; bumped = true; }
+          }
+        }
+        if (top !== it.p.y) { it.p.y = top; moved = true; }
+        placed.push({ x: it.p.x, w: it.p.w, top, bottom: top + h });
+      });
+      if (moved) saveSettings();
+    }
+    items.forEach(({ w, p }) => {
+      w.style.top = `${p.y}px`;
       maxX = Math.max(maxX, p.x + p.w); maxY = Math.max(maxY, p.y + w.offsetHeight);
     });
     let spacer = $('.canvas-spacer', boards);
@@ -196,12 +254,11 @@
   }
 
   // Drag starts on a board's head or empty background, never on quests, buttons or inputs.
-  let drag = null;
   let zTop = 10;
   boards.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const wrap = e.target.closest('.board-wrap');
-    if (!wrap || e.target.closest('.quest, button, input, form, summary, details, .add-row')) return;
+    if (!wrap || e.target.closest('.quest, .quests, button, input, form, summary, details, .add-row')) return;
     if (settings.layout.mode !== 'free') {
       settings.layout.mode = 'free';
       applyLayout();                                   // freezes everything where it is
@@ -238,6 +295,7 @@
     saveSettings();
     applyLayout();
   }
+  boards.addEventListener('toggle', () => { if (settings.layout.mode === 'free') applyLayout(); }, true);   // completed list opened/closed
   boards.addEventListener('pointerup', endDrag);
   boards.addEventListener('pointercancel', endDrag);
 
@@ -271,8 +329,18 @@
 
   function questEl(g, q) {
     const li = tplQuest.content.firstElementChild.cloneNode(true);
-    li.classList.toggle('done', q.done);
+    li.classList.toggle('done', doneNow(g, q));
     $('.quest-text', li).innerHTML = inline(q.text);
+    if (isDaily(g)) {
+      li.classList.add('daily-quest');
+      const e = dailyEntry(q);
+      if (e) {
+        const left = DAILY_MS - (Date.now() - Date.parse(e.at));
+        const h = Math.floor(left / 3600000), m = Math.max(1, Math.floor((left % 3600000) / 60000));
+        const tag = document.createElement('span'); tag.className = 'resets'; tag.textContent = h ? `resets in ${h} h ${m} min` : `resets in ${m} min`;
+        $('.quest-text', li).appendChild(tag);
+      }
+    }
     const rune = $('.rune', li);
     rune.addEventListener('click', (e) => { e.stopPropagation(); toggle(g, q, li, rune); });
     rune.addEventListener('mouseenter', () => Sound.hover());
@@ -316,9 +384,11 @@
     Sound.unlock();
     const r = rune.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    if (!q.done) {
+    const daily = isDaily(g);
+    const isDone = daily ? !!dailyEntry(q) : q.done;
+    if (!isDone) {
       busy = true;
-      q.done = true;
+      if (!daily) q.done = true;
       const before = levelInfo(totalXp()).level;
       progress.log.push({ text: q.text, at: new Date().toISOString(), device: info.device });
       const after = levelInfo(totalXp()).level;
@@ -332,11 +402,13 @@
       changed();
       setTimeout(() => {
         if (after > before) levelUp(after);
-        li.classList.remove('completing'); li.classList.add('leaving');
+        li.classList.remove('completing');
+        if (daily) { busy = false; render(); return; }      // daily quests stay on the board, ticked
+        li.classList.add('leaving');
         setTimeout(() => { busy = false; render(); }, 480);
       }, 750);
     } else {
-      q.done = false;
+      if (!daily) q.done = false;
       let idx = -1; progress.log.forEach((e, i) => { if (e.text === q.text) idx = i; });
       if (idx >= 0) { const e = progress.log.splice(idx, 1)[0]; progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`); }
       FX.poof(cx, cy);
@@ -385,7 +457,9 @@
   // What a brand-new install shows before it has ever synced. It must never be merged into
   // an existing devbox board, or every fresh device would add a stray "Today / Add a quest".
   const DEFAULT_QUESTS = '# Quests\n\n## Active: Today\n- [ ] Add a quest\n';
-  const isUntouchedDefault = (text) => text === serialize(parse(DEFAULT_QUESTS));
+  // The installed app starts from assets/QUESTS.starter.md ("First steps", "Someday"...), older builds
+  // and the browser from DEFAULT_QUESTS; either one untouched means "nothing of mine here yet".
+  const isUntouchedDefault = (text) => text === serialize(parse(DEFAULT_QUESTS)) || (!!(info && info.starter) && text === serialize(parse(info.starter)));
 
   async function runSync(reason) {
     if (!Sync.ready || syncing || busy) { if (busy) scheduleSync(1500); return; }
@@ -558,6 +632,92 @@
     if (u.state === 'ready' && prev !== 'ready') toast(`Update v${u.version} is ready. Click "restart to update", or just hide the window and it installs itself.`);
   }
 
+  // ---------- backups ----------
+  // Lists saved versions of the quest list (devbox history or this device's backups folder), newest
+  // first, with what changed compared to the version after it. Restoring makes that version the
+  // current board and syncs it like any other edit.
+  let backupSource = 'devbox';
+  const questTexts = (text) => { const d = parse(text || ''); const s = new Set(); d.groups.forEach((g) => g.items.forEach((it) => { if (it.type === 'quest') s.add(norm(it.text)); })); return s; };
+  const counts = (text) => { const d = parse(text || ''); let open = 0, done = 0; d.groups.forEach((g) => g.items.forEach((it) => { if (it.type === 'quest') (it.done ? done++ : open++); })); return { open, done, boards: d.groups.length }; };
+  function fmtWhen(iso) {
+    const d = new Date(iso), now = new Date();
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const day = d.toDateString() === now.toDateString() ? 'Today' : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    const mins = Math.round((now - d) / 60000);
+    const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} days ago`;
+    return { label: `${day} ${time}`, ago };
+  }
+  async function loadBackups() {
+    const list = $('#backup-list'), status = $('#backup-status');
+    list.innerHTML = '<li><span class="empty">Loading…</span></li>';
+    $('#bk-src-devbox').classList.toggle('on', backupSource === 'devbox');
+    $('#bk-src-local').classList.toggle('on', backupSource === 'local');
+    let items = [];
+    try {
+      if (backupSource === 'devbox') {
+        if (!Sync.ready) throw new Error('Not connected to the devbox (title bar → Sync).');
+        const meta = await Sync.history('QUESTS.md');
+        items = meta.map((m) => ({ id: m.id, at: m.at, fetch: () => Sync.historyGet('QUESTS.md', m.id), text: null }));
+        // fetch bodies lazily but in small batches so the diff column can be shown
+        const firstBodies = await Promise.all(items.slice(0, 60).map((it) => it.fetch().catch(() => null)));
+        firstBodies.forEach((t, i) => { items[i].text = t; });
+      } else {
+        items = (api.listBackups ? await api.listBackups('QUESTS.md') : []).map((b) => ({ id: b.id, at: b.at, text: b.text, fetch: async () => b.text }));
+      }
+    } catch (e) {
+      list.innerHTML = '';
+      const li = document.createElement('li'); const sp = document.createElement('span'); sp.className = 'empty'; sp.textContent = e.message; li.appendChild(sp); list.appendChild(li);
+      return;
+    }
+    list.innerHTML = '';
+    if (!items.length) { const li = document.createElement('li'); li.innerHTML = '<span class="empty">No backups yet. They appear after the next change.</span>'; list.appendChild(li); return; }
+    const current = serialize(doc);
+    items.forEach((it, i) => {
+      const li = document.createElement('li');
+      const w = fmtWhen(it.at);
+      const when = document.createElement('div'); when.className = 'when'; when.textContent = w.label;
+      const small = document.createElement('small'); small.textContent = w.ago; when.appendChild(small);
+      const what = document.createElement('div'); what.className = 'what';
+      if (it.text != null) {
+        const c = counts(it.text);
+        let line = `${c.open} open · ${c.done} done · ${c.boards} boards`;
+        const newer = items[i - 1] && items[i - 1].text;
+        if (newer != null) {
+          const a = questTexts(it.text), b = questTexts(newer);
+          const removedLater = [...a].filter((q) => !b.has(q)).length, addedLater = [...b].filter((q) => !a.has(q)).length;
+          if (removedLater) line += ` · has ${removedLater} quest${removedLater > 1 ? 's' : ''} later removed`;
+          if (addedLater && !removedLater) line += ` · before ${addedLater} new`;
+        }
+        what.textContent = line;
+        if (serialize(parse(it.text)) === current) what.textContent += ' · same as now';
+      }
+      const btn = document.createElement('button'); btn.className = 'btn'; btn.type = 'button'; btn.textContent = 'Restore';
+      btn.addEventListener('click', () => restoreBackup(it, btn));
+      li.append(when, what, btn);
+      list.appendChild(li);
+    });
+  }
+  async function restoreBackup(it, btn) {
+    const status = $('#backup-status');
+    try {
+      btn.disabled = true;
+      const text = it.text != null ? it.text : await it.fetch();
+      const next = parse(text);
+      if (!next.groups.length) throw new Error('That version is empty; not restoring it.');
+      await api.writeFile('QUESTS.md', serialize(doc));      // current board goes into the backups first
+      doc = next; render(); saveLocal(); scheduleSync(300);
+      Sound.levelUp && Sound.levelUp();
+      FX.burst(window.innerWidth / 2, window.innerHeight / 2, { count: 50, power: 1 });
+      status.textContent = `Restored the board from ${fmtWhen(it.at).label}.`;
+      toast(`Board restored from ${fmtWhen(it.at).label}. The previous board is in the backups too.`);
+      setTimeout(loadBackups, 1200);
+    } catch (e) {
+      status.textContent = e.message;
+    } finally { btn.disabled = false; }
+  }
+  function openBackups() { $('#backups').hidden = false; $('#backup-status').textContent = ''; backupSource = Sync.ready ? 'devbox' : 'local'; loadBackups(); }
+  function closeBackups() { $('#backups').hidden = true; }
+
   // ---------- boot ----------
   async function boot() {
     info = await api.appInfo();
@@ -603,6 +763,12 @@
     setSyncStatus(Sync.ready ? 'ok' : 'off');
     if (Sync.ready) runSync('boot');
     setInterval(() => { if (Sync.ready) runSync('timer'); }, 90 * 1000);
+    let dailyStamp = '';
+    setInterval(() => {
+      const stamp = doc.groups.filter(isDaily).flatMap((g) => g.items.filter((i) => i.type === 'quest').map((q) => (dailyEntry(q) ? '1' : '0'))).join('');
+      if (stamp !== dailyStamp) { if (dailyStamp && !busy) render(); dailyStamp = stamp; }
+      else if (stamp.includes('1') && !busy && !document.hidden) $$('.quest .resets').length && render();
+    }, 60 * 1000);
     window.addEventListener('focus', () => { if (Sync.ready) runSync('focus'); });
 
     $('#btn-theme').addEventListener('click', toggleTheme);
@@ -624,6 +790,11 @@
     $('#btn-min').addEventListener('click', () => api.minimize());
     $('#btn-hide').addEventListener('click', () => api.hide());
     $('#btn-open-data').addEventListener('click', () => api.openDataDir());
+    $('#btn-backups').addEventListener('click', openBackups);
+    $('#backup-close').addEventListener('click', closeBackups);
+    $('#backups').addEventListener('click', (e) => { if (e.target.id === 'backups') closeBackups(); });
+    $('#bk-src-devbox').addEventListener('click', () => { backupSource = 'devbox'; loadBackups(); });
+    $('#bk-src-local').addEventListener('click', () => { backupSource = 'local'; loadBackups(); });
     $('#btn-tidy').addEventListener('click', tidyBoards);
     $('#btn-update').addEventListener('click', () => {
       if (updateUi.state === 'ready') api.installUpdate();
@@ -632,7 +803,7 @@
 
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) { if (e.key === 'Escape') closeSettings(); return; }
-      if (e.key === 'Escape') closeSettings();
+      if (e.key === 'Escape') { closeSettings(); closeBackups(); }
       if (e.key === 't' || e.key === 'T') toggleTheme();
       if (e.key === 'm' || e.key === 'M') $('#btn-sound').click();
     });

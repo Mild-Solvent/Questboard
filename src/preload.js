@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('questboard', {
   readFile: (name) => ipcRenderer.invoke('data:read', name),
   writeFile: (name, text) => ipcRenderer.invoke('data:write', name, text),
+  listBackups: (name) => ipcRenderer.invoke('backups:list', name),
   getAutostart: () => ipcRenderer.invoke('autostart:get'),
   setAutostart: (v) => ipcRenderer.invoke('autostart:set', v),
   appInfo: () => ipcRenderer.invoke('app:info'),

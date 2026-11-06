@@ -68,6 +68,7 @@ function watchQuests() {
         const text = readFileSafe(questsPath());
         if (text === null || text === lastWrittenQuests) return;
         lastWrittenQuests = text;
+        backupVersion('QUESTS.md', text);
         if (win && !win.isDestroyed()) win.webContents.send('quests:changed', text);
       }, 300);
     });
@@ -209,12 +210,46 @@ function createTray() {
 
 // ---------- IPC ----------
 ipcMain.handle('data:read', (_e, name) => { const p = dataFile(String(name)); if (!p) return null; if (name === 'QUESTS.md') ensureQuestsFile(); return readFileSafe(p); });
-ipcMain.handle('data:write', (_e, name, text) => { const p = dataFile(String(name)); return p ? writeFileSafe(p, String(text)) : false; });
+// ---------- local backups ----------
+// Every change to the quest list or the progress log is also kept in Documents\Questboard\backups\<file>\.
+const BACKUP_FILES = ['QUESTS.md', 'progress.json'];
+const BACKUP_KEEP = 500;
+const backupDir = (name) => path.join(dataDir(), 'backups', name);
+function backupVersion(name, text) {
+  if (!BACKUP_FILES.includes(name)) return;
+  try {
+    const d = backupDir(name);
+    fs.mkdirSync(d, { recursive: true });
+    const versions = fs.readdirSync(d).filter((f) => !f.startsWith('.')).sort();
+    if (versions.length && fs.readFileSync(path.join(d, versions[versions.length - 1]), 'utf8') === text) return;
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('.', '');   // 20261106T234512123Z
+    fs.writeFileSync(path.join(d, `${stamp}.${name.split('.').pop()}`), text, 'utf8');
+    versions.slice(0, Math.max(0, versions.length + 1 - BACKUP_KEEP)).forEach((f) => { try { fs.unlinkSync(path.join(d, f)); } catch { /* ignore */ } });
+  } catch (e) { console.error('backup', e && e.message); }
+}
+const VERSION_RE = /^\d{8}T\d{9}Z\.(md|json)$/;
+function stampToIso(id) { const m = id.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z/); return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.${m[7]}Z` : null; }
+ipcMain.handle('backups:list', (_e, name) => {
+  name = String(name);
+  if (!BACKUP_FILES.includes(name)) return [];
+  try {
+    return fs.readdirSync(backupDir(name)).filter((f) => VERSION_RE.test(f)).sort().reverse().slice(0, 400)
+      .map((id) => ({ id, at: stampToIso(id), text: fs.readFileSync(path.join(backupDir(name), id), 'utf8') }));
+  } catch { return []; }
+});
+ipcMain.handle('data:write', (_e, name, text) => {
+  const p = dataFile(String(name));
+  if (!p) return false;
+  const ok = writeFileSafe(p, String(text));
+  if (ok) backupVersion(String(name), String(text));
+  return ok;
+});
 ipcMain.handle('autostart:get', () => ({ enabled: autostartEnabled(), available: app.isPackaged }));
 ipcMain.handle('autostart:set', (_e, enabled) => setAutostart(!!enabled));
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(), packaged: app.isPackaged, dataDir: dataDir(), platform: process.platform,
   launchedAtStartup: process.argv.includes('--autostart'), updateReady, device: os.hostname(),
+  starter: readFileSafe(path.join(__dirname, '..', 'assets', 'QUESTS.starter.md')) || '',
 }));
 ipcMain.on('window:minimize', () => win && win.minimize());
 ipcMain.on('window:hide', () => win && win.hide());

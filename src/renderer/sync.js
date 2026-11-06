@@ -33,10 +33,21 @@
     return { ok: true, hasQuests: t.status === 200 };
   }
 
+  async function history(file) {
+    const r = await fetch(url(`history/${file}`), { headers: headers(), cache: 'no-store' });
+    if (!r.ok) throw new Error(`History not available (${r.status}).`);
+    return r.json();
+  }
+  async function historyGet(file, id) {
+    const r = await fetch(url(`history/${file}/${id}`), { headers: headers(), cache: 'no-store' });
+    if (!r.ok) throw new Error(`Could not load that version (${r.status}).`);
+    return r.text();
+  }
+
   window.Sync = {
     configure(c) { cfg = Object.assign({}, cfg, c || {}); },
     get ready() { return !!(cfg.baseUrl && cfg.token); },
     get baseUrl() { return cfg.baseUrl; },
-    get, put, check,
+    get, put, check, history, historyGet,
   };
 })();
