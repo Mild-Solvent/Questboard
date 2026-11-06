@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="tavern">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https: http:;" />
+  <title>Questboard</title>
+  <link rel="stylesheet" href="fonts.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="mobile.css" />
+</head>
+<body>
+  <canvas id="ambient" aria-hidden="true"></canvas>
+
+  <div id="app">
+    <header id="titlebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Questboard</span>
+      </div>
+      <div class="titlebar-actions">
+        <button class="theme-switch" id="btn-theme" title="Switch theme"><span class="seg seg-tavern">Tavern</span><span class="seg seg-abyss">Abyss</span></button>
+        <button class="tb-btn" id="btn-sound" title="Sound on/off"><span class="ico ico-sound"></span></button>
+        <button class="tb-btn tb-sync" id="btn-sync" title="Sync now"><span class="ico-sync" aria-hidden="true"></span><span class="sync-dot" id="sync-dot"></span></button>
+        <button class="tb-btn" id="btn-settings" title="Settings"><span class="ico-gear" aria-hidden="true"></span></button>
+      </div>
+    </header>
+
+    <section id="hero">
+      <div class="hero-left">
+        <div class="rank-crest" id="rank-crest" aria-hidden="true"><span id="level-num">1</span></div>
+        <div class="rank-text">
+          <div class="rank-title"><span id="rank-name">Tavern Squire</span></div>
+          <div class="xp-row">
+            <div class="xp-bar"><div class="xp-fill" id="xp-fill"></div><div class="xp-shine"></div></div>
+            <div class="xp-label" id="xp-label">0 / 100 XP</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-right">
+        <div class="stat"><div class="stat-num" id="stat-today">0</div><div class="stat-lbl">cleared today</div></div>
+        <div class="stat"><div class="stat-num" id="stat-total">0</div><div class="stat-lbl">cleared total</div></div>
+        <div class="stat"><div class="stat-num" id="stat-open">0</div><div class="stat-lbl">open quests</div></div>
+      </div>
+    </section>
+
+    <main id="boards"></main>
+
+    <footer id="footer">
+      <span id="footer-hint">Tap a quest to complete it.</span>
+      <span id="version"></span>
+    </footer>
+  </div>
+
+  <!-- Settings sheet: sync endpoint, token, device name -->
+  <div id="sheet-backdrop" hidden></div>
+  <section id="sheet" hidden aria-label="Settings">
+    <div class="sheet-grip"></div>
+    <h2 class="sheet-title">Settings</h2>
+
+    <h3 class="sheet-sub">Sync</h3>
+    <p class="sheet-help">Quests live on the devbox. Paste the sync address and the token once; the board then pulls on open and pushes every change.</p>
+    <label class="field"><span>Sync address</span><input id="set-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://devbox.tail20cc8f.ts.net/questboard" /></label>
+    <label class="field"><span>Token</span><span class="field-row"><input id="set-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="paste the token" /><button type="button" class="mini" id="set-token-eye">show</button></span></label>
+    <label class="field"><span>This device</span><input id="set-device" type="text" maxlength="40" autocomplete="off" placeholder="phone" /></label>
+    <div class="sheet-row">
+      <button type="button" class="btn" id="set-test">Test connection</button>
+      <button type="button" class="btn primary" id="set-save">Save &amp; sync</button>
+    </div>
+    <div class="sheet-status" id="set-status"></div>
+
+    <h3 class="sheet-sub">Board</h3>
+    <div class="sheet-row">
+      <button type="button" class="btn" id="set-reset-xp">Reset XP</button>
+      <button type="button" class="btn" id="set-releases">Check for updates</button>
+    </div>
+    <p class="sheet-help" id="set-about"></p>
+    <button type="button" class="btn ghost" id="set-close">Close</button>
+  </section>
+
+  <div id="banner-layer" aria-live="polite"></div>
+  <canvas id="fx" aria-hidden="true"></canvas>
+
+  <template id="tpl-group">
+    <div class="board-wrap">
+    <section class="board">
+      <header class="board-head">
+        <span class="board-glyph" aria-hidden="true"></span>
+        <h2 class="board-title"></h2>
+        <span class="board-count"></span>
+      </header>
+      <ul class="quests"></ul>
+      <div class="notes"></div>
+      <details class="done-wrap">
+        <summary><span class="done-label">Completed</span> <span class="done-count"></span></summary>
+        <ul class="quests done-list"></ul>
+      </details>
+      <div class="add-row">
+        <button class="add-btn" type="button">+ new quest</button>
+        <form class="add-form" hidden>
+          <input class="add-input" type="text" maxlength="200" placeholder="What needs doing?" autocomplete="off" enterkeyhint="done" />
+        </form>
+      </div>
+    </section>
+    </div>
+  </template>
+
+  <template id="tpl-quest">
+    <li class="quest">
+      <button class="rune" type="button" aria-label="Complete quest"><span class="rune-core"></span></button>
+      <span class="quest-text"></span>
+    </li>
+  </template>
+
+  <script src="bridge.js"></script>
+  <script src="merge.js"></script>
+  <script src="sync.js"></script>
+  <script src="fx.js"></script>
+  <script src="sound.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

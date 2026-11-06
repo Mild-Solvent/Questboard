@@ -1,0 +1,59 @@
+plugins { id("com.android.application") }
+
+// Release signing: put a keystore.properties file OUTSIDE the repo and point to it with
+// QUESTBOARD_KEYSTORE_PROPS (default ~/questboard-signing/keystore.properties). Keys:
+//   storeFile=/abs/path/questboard.jks  storePassword=...  keyAlias=questboard  keyPassword=...
+// Without it, assembleRelease produces an unsigned APK (debug builds are signed with the debug key).
+def ksPropsPath = System.getenv("QUESTBOARD_KEYSTORE_PROPS") ?: "${System.getProperty('user.home')}/questboard-signing/keystore.properties"
+def ksProps = new Properties()
+def ksFile = file(ksPropsPath)
+if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+
+android {
+  namespace "com.mildsolvent.questboard"
+  compileSdk 35
+
+  defaultConfig {
+    applicationId "com.mildsolvent.questboard"
+    minSdk 26
+    targetSdk 35
+    versionCode 1
+    versionName "0.3.0"
+  }
+
+  signingConfigs {
+    if (ksProps.storeFile) {
+      release {
+        storeFile file(ksProps.storeFile)
+        storePassword ksProps.storePassword
+        keyAlias ksProps.keyAlias
+        keyPassword ksProps.keyPassword
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+      if (ksProps.storeFile) signingConfig signingConfigs.release
+    }
+  }
+
+  buildFeatures { buildConfig true }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  applicationVariants.all { variant ->
+    variant.outputs.all { output ->
+      outputFileName = "Questboard-${variant.versionName}-android${variant.buildType.name == 'debug' ? '-debug' : ''}.apk"
+    }
+  }
+}
+
+dependencies {
+  implementation "androidx.webkit:webkit:1.12.1"
+  implementation "androidx.core:core:1.13.1"
+}

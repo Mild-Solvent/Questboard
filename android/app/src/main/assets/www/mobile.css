@@ -1,0 +1,132 @@
+/* ===================== Questboard — phone layout =====================
+   Loaded after styles.css. Keeps both skins, reshapes the layout for a
+   narrow touch screen and adds the settings sheet. */
+:root { --inset-top: 0px; --inset-bottom: 0px; --inset-left: 0px; --inset-right: 0px; }
+
+body { cursor: auto; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+button, a, input, summary, .rune { cursor: auto; }
+
+#app {
+  grid-template-rows: calc(52px + var(--inset-top)) auto 1fr calc(30px + var(--inset-bottom));
+  padding-left: var(--inset-left); padding-right: var(--inset-right);
+}
+
+/* ---------- title bar ---------- */
+#titlebar { padding: var(--inset-top) 6px 0 12px; -webkit-app-region: no-drag; }
+.brand { gap: 8px; }
+.brand-name { font-size: 16px; }
+:root[data-theme="abyss"] .brand-name { font-size: 15px; letter-spacing: 1.5px; }
+.titlebar-actions { gap: 0; }
+.tb-btn { height: 38px; min-width: 38px; padding: 0 8px; justify-content: center; }
+.tb-btn:hover { background: transparent; color: var(--text-dim); }
+.tb-btn:active { background: rgba(255,255,255,.1); }
+.theme-switch { margin-right: 4px; }
+.theme-switch .seg { padding: 5px 8px; font-size: 0; line-height: 16px; }
+.theme-switch .seg::before { font-size: 15px; }
+.theme-switch:hover .seg { color: var(--text-dim); }
+@media (min-width: 420px) {
+  .theme-switch .seg { font-size: 10.5px; padding: 5px 9px; }
+  .theme-switch .seg::before { font-size: 12px; }
+}
+
+.ico-sync { width: 16px; height: 16px; display: inline-block; border-radius: 50%; border: 2.2px solid currentColor; border-right-color: transparent; position: relative; }
+.ico-sync::after { content: ''; position: absolute; right: -4px; top: -1px; border: 4px solid transparent; border-left-color: currentColor; transform: rotate(-20deg); }
+.tb-sync.spinning .ico-sync { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tb-sync { position: relative; }
+.sync-dot { position: absolute; right: 6px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+.tb-sync.ok .sync-dot { background: var(--done); box-shadow: 0 0 6px var(--done); }
+.tb-sync.err .sync-dot { background: #ff5c5c; box-shadow: 0 0 6px #ff5c5c; }
+.tb-sync.dirty .sync-dot { background: var(--accent); box-shadow: 0 0 6px var(--glow); }
+.tb-sync.unset { opacity: .55; }
+
+.ico-gear { width: 16px; height: 16px; display: inline-block; border-radius: 50%; border: 4px dotted currentColor; box-sizing: border-box; position: relative; }
+.ico-gear::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; border: 2px solid currentColor; }
+
+/* ---------- hero ---------- */
+#hero { padding: 10px 14px 8px !important; margin: 8px 12px 2px !important; gap: 10px; flex-wrap: wrap; }
+.hero-left { gap: 12px; width: 100%; }
+.rank-crest { width: 50px; height: 50px; font-size: 21px; }
+.rank-title { font-size: 19px !important; }
+.xp-row { gap: 8px; }
+.xp-bar { height: 12px; }
+.xp-label { font-size: 11px; min-width: 70px; text-align: right; }
+.hero-right { display: flex !important; width: 100%; gap: 8px; }
+.stat { flex: 1; min-width: 0; padding: 4px 4px; }
+.stat-num { font-size: 18px; }
+.stat-lbl { font-size: 9px; letter-spacing: .6px; }
+
+/* ---------- boards ---------- */
+#boards { padding: 14px 14px 28px; grid-template-columns: 1fr; gap: 22px; -webkit-overflow-scrolling: touch; }
+#boards::-webkit-scrollbar { width: 0; }
+.board-wrap.featured { grid-column: auto; }
+:root[data-theme="tavern"] .board { padding: 20px 16px 12px; }
+:root[data-theme="tavern"] .board.featured { padding: 24px 18px 14px; }
+:root[data-theme="tavern"] .board.featured .board-title { font-size: 24px; }
+:root[data-theme="tavern"] .board.featured::after { width: 38px; height: 38px; font-size: 16px; right: 16px; bottom: 12px; }
+:root[data-theme="abyss"] .board { padding: 14px 14px 10px; }
+:root[data-theme="abyss"] .board::before { left: 50px; }
+
+.quest { padding: 9px 6px; gap: 12px; }
+:root[data-theme="tavern"] .quest { padding: 8px 6px; }
+.quest-text { padding-right: 30px; }
+.quest:hover { background: transparent; }
+.quest:active { background: rgba(0,0,0,.06); }
+:root[data-theme="abyss"] .quest:active { background: rgba(255,255,255,.07); }
+.rune { width: 26px; height: 26px; }
+.rune:hover { transform: none; }
+:root[data-theme="abyss"] .rune { width: 26px; height: 28px; }
+.quest .del { opacity: .4; width: 30px; height: 30px; right: 0; top: 50%; transform: translateY(-50%); font-size: 17px; line-height: 30px; background: transparent; }
+.quest .del:hover { background: transparent; color: var(--ink); }
+.add-btn { padding: 9px 12px; font-size: 14px; }
+.add-input { padding: 10px 12px; font-size: 16px; }
+:root[data-theme="tavern"] .add-input { font-size: 17px; }
+.done-wrap summary { padding: 8px 0; }
+
+/* ---------- footer ---------- */
+#footer { padding: 0 14px var(--inset-bottom); gap: 10px; font-size: 11px; }
+
+/* ---------- banners / toasts ---------- */
+.banner { font-size: 32px; letter-spacing: 2px; white-space: normal; padding: 10px 20px 12px; max-width: 88vw; }
+.banner small { font-size: 14px; letter-spacing: 1px; }
+.banner.levelup { font-size: 42px; }
+.toast { bottom: calc(48px + var(--inset-bottom)); font-size: 13px; max-width: 86vw; text-align: center; }
+
+/* ---------- settings sheet ---------- */
+#sheet-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); backdrop-filter: blur(2px); animation: fade .2s both; }
+#sheet-backdrop[hidden], #sheet[hidden] { display: none; }
+@keyframes fade { from { opacity: 0; } }
+#sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 61;
+  max-height: calc(100% - var(--inset-top) - 24px); overflow-y: auto;
+  padding: 10px 18px calc(18px + var(--inset-bottom));
+  border-radius: 18px 18px 0 0; color: var(--text);
+  animation: sheet-up .28s cubic-bezier(.2,.9,.3,1.1) both;
+  font-family: var(--font-body);
+}
+@keyframes sheet-up { from { transform: translateY(40px); opacity: 0; } }
+:root[data-theme="tavern"] #sheet { background: linear-gradient(180deg, #3b2112, #22120a); box-shadow: 0 -8px 40px rgba(0,0,0,.6), inset 0 0 0 2px #6b3f1e; }
+:root[data-theme="abyss"] #sheet { background: linear-gradient(180deg, rgba(14,70,105,.97), rgba(4,24,43,.98)); border: 1.5px solid rgba(255,255,255,.7); border-bottom: none; box-shadow: 0 0 24px rgba(60,240,255,.25); }
+.sheet-grip { width: 42px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); margin: 0 auto 10px; }
+.sheet-title { margin: 0 0 6px; font: 600 22px var(--font-head); }
+:root[data-theme="abyss"] .sheet-title { text-transform: uppercase; letter-spacing: 2px; }
+.sheet-sub { margin: 16px 0 4px; font: 600 13px var(--font-head); letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); }
+.sheet-help { margin: 0 0 10px; font-size: 13px; color: var(--text-dim); line-height: 1.4; }
+.field { display: block; margin: 0 0 10px; }
+.field > span:first-child { display: block; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
+.field-row { display: flex; gap: 6px; align-items: stretch; }
+.field input { width: 100%; min-width: 0; border-radius: 10px; padding: 11px 12px; font: 15px var(--font-body); color: var(--text); background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.18); outline: none; }
+.field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow); }
+.mini { flex: none; padding: 0 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: var(--text-dim); font: 12px var(--font-body); }
+.sheet-row { display: flex; gap: 8px; margin: 6px 0 8px; }
+.btn { flex: 1; padding: 12px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.07); color: var(--text); font: 600 14px var(--font-body); letter-spacing: .5px; }
+.btn:active { transform: scale(.98); background: rgba(255,255,255,.14); }
+.btn.primary { background: var(--accent); color: var(--rune-ink); border-color: transparent; box-shadow: 0 0 16px var(--glow); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-dim); margin-top: 6px; }
+.sheet-status { min-height: 18px; font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+.sheet-status.ok { color: var(--done); }
+.sheet-status.err { color: #ff7b7b; }
+:root[data-theme="abyss"] .sheet-status.ok { color: #7df9d6; }
+
+/* keyboard: keep the add-quest input visible */
+.add-form:not([hidden]) { scroll-margin-bottom: 80px; }
