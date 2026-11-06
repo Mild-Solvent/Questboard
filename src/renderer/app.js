@@ -214,6 +214,16 @@
   boards.addEventListener('pointerup', endDrag);
   boards.addEventListener('pointercancel', endDrag);
 
+  // Clicking bare wood (or open water) leaves a mark: a sword cut in Tavern, a splash in Abyss.
+  window.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const t = e.target;
+    if (!(t === boards || t === document.body || t.id === 'app' || t.classList.contains('canvas-spacer'))) return;
+    Sound.unlock();
+    if (settings.theme === 'abyss') { FX.splash(e.clientX, e.clientY); Sound.splash(); }
+    else { FX.cut(e.clientX, e.clientY); Sound.cut(); }
+  });
+
   function questEl(g, q) {
     const li = tplQuest.content.firstElementChild.cloneNode(true);
     li.classList.toggle('done', q.done);
@@ -499,6 +509,7 @@
     });
     api.onUpdateStatus((u) => { if (u.state === 'ready') { $('#btn-update').hidden = false; toast(`Update v${u.version} downloaded. Restart when you like.`); } });
     if (info.updateReady) $('#btn-update').hidden = false;
+    api.onIdle((idle) => FX.setIdle(idle));
 
     applyTheme(settings.theme || 'tavern');
     applySound();

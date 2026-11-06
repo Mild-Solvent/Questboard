@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld('questboard', {
   installUpdate: () => ipcRenderer.send('update:install'),
   onQuestsChanged: (cb) => ipcRenderer.on('quests:changed', (_e, text) => cb(text)),
   onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, s) => cb(s)),
+  onIdle: (cb) => ipcRenderer.on('app:idle', (_e, v) => cb(v)),
 });

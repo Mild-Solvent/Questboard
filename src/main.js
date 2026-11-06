@@ -120,6 +120,9 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => { win.show(); win.focus(); });
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
+  // Hidden in the tray the renderer idles: no animation frames, lower priority, and a GC hint.
+  win.on('hide', () => { win.webContents.setBackgroundThrottling(true); setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.webContents.send('app:idle', true); }, 1000); });
+  win.on('show', () => win.webContents.send('app:idle', false));
   win.on('closed', () => { win = null; });
 }
 function showWindow() {

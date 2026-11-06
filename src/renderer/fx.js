@@ -1,8 +1,10 @@
 // Visual effects: ambient particles, cursor trail, bursts, shockwaves.
 (function () {
   const ambient = document.getElementById('ambient');
+  const marks = document.getElementById('marks');
   const fx = document.getElementById('fx');
   const actx = ambient.getContext('2d');
+  const mctx = marks.getContext('2d');
   const fctx = fx.getContext('2d');
   let W = 0, H = 0, dpr = 1;
   let theme = 'tavern';
@@ -12,13 +14,62 @@
   };
 
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dpr = 1; // effects stay at 1x: crisp enough, and a quarter of the memory of 2x backing stores
     W = window.innerWidth; H = window.innerHeight;
-    for (const c of [ambient, fx]) {
+    for (const c of [ambient, marks, fx]) {
       c.width = Math.floor(W * dpr); c.height = Math.floor(H * dpr);
     }
     actx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    redrawMarks();
+  }
+
+  // ---------- cut marks (session only: cleared on restart or theme switch) ----------
+  const cuts = [];
+  function drawCut(c) {
+    mctx.save();
+    mctx.translate(c.x, c.y); mctx.rotate(c.a);
+    mctx.lineCap = 'round';
+    // raw wood showing inside the gash
+    mctx.strokeStyle = 'rgba(222, 168, 104, .8)'; mctx.lineWidth = 4.5;
+    mctx.beginPath(); mctx.moveTo(-c.len / 2, 1.2); mctx.lineTo(c.len / 2, 1.2); mctx.stroke();
+    // the dark cut
+    mctx.strokeStyle = 'rgba(10, 5, 2, .95)'; mctx.lineWidth = 2.4;
+    mctx.beginPath(); mctx.moveTo(-c.len / 2, 0); mctx.quadraticCurveTo(0, -c.bow, c.len / 2, 0); mctx.stroke();
+    // splinters
+    mctx.strokeStyle = 'rgba(10, 5, 2, .7)'; mctx.lineWidth = 1.2;
+    for (const sp of c.splinters) { mctx.beginPath(); mctx.moveTo(sp.x, 0); mctx.lineTo(sp.x + sp.dx, sp.dy); mctx.stroke(); }
+    mctx.restore();
+  }
+  function redrawMarks() { mctx.clearRect(0, 0, W, H); if (theme === 'tavern') cuts.forEach(drawCut); }
+  function cut(x, y) {
+    if (theme !== 'tavern') return splash(x, y);
+    const c = {
+      x, y, a: -(Math.PI / 4) + rnd(-0.5, 0.5), len: rnd(60, 130), bow: rnd(-4, 4),
+      splinters: Array.from({ length: 2 + (Math.random() * 3 | 0) }, () => ({ x: rnd(-30, 30), dx: rnd(-8, 8), dy: rnd(-6, 6) })),
+    };
+    cuts.push(c); if (cuts.length > 400) cuts.shift();
+    drawCut(c);
+    // sparks along the blade
+    for (let i = 0; i < 14; i++) {
+      const t = rnd(-c.len / 2, c.len / 2), ang = c.a + rnd(-0.6, 0.6) + (Math.random() < 0.5 ? Math.PI : 0), sp = rnd(2, 6);
+      parts.push({ x: x + Math.cos(c.a) * t, y: y + Math.sin(c.a) * t, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 1, life: 0, max: rnd(250, 550), size: rnd(1.5, 3), c: pick(['#fff6d5', '#ffd36b', '#ffb347']), kind: 'dot', g: 0.18 });
+    }
+    rings.push({ x, y, r: 2, max: 40, life: 0, c: '#ffe9a8' });
+  }
+  function splash(x, y) {
+    const cols = palette.abyss;
+    rings.push({ x, y, r: 3, max: 70, life: 0, c: cols.burst[0] });
+    rings.push({ x, y, r: 2, max: 110, life: -140, c: '#ffffff' });
+    for (let i = 0; i < 22; i++) {
+      const ang = rnd(-Math.PI * 0.9, -Math.PI * 0.1), sp = rnd(0.8, 3.2);
+      parts.push({ x: x + rnd(-6, 6), y, vx: Math.cos(ang) * sp * 0.6, vy: Math.sin(ang) * sp, life: 0, max: rnd(900, 2200), size: rnd(2, 6), c: pick(cols.trail), kind: 'bubble', g: -0.03, wob: rnd(0, 6) });
+    }
+    for (let i = 0; i < 10; i++) {
+      const ang = rnd(0, Math.PI * 2), sp = rnd(1, 4);
+      parts.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 1.5, life: 0, max: rnd(300, 600), size: rnd(1.5, 3), c: '#dffbff', kind: 'dot', g: 0.08 });
+    }
   }
   window.addEventListener('resize', resize);
   resize();
@@ -29,7 +80,7 @@
   // ---------- ambient (embers / bubbles) ----------
   const amb = [];
   function spawnAmbient() {
-    const n = theme === 'abyss' ? 60 : 45;
+    const n = theme === 'abyss' ? 40 : 30;
     amb.length = 0;
     for (let i = 0; i < n; i++) amb.push(newAmbient(true));
   }
@@ -142,7 +193,14 @@
   }
 
   let last = performance.now();
+  let running = true;
+  document.addEventListener('visibilitychange', () => {
+    const vis = !document.hidden;
+    if (vis && !running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
+    else if (!vis) running = false;
+  });
   function frame(t) {
+    if (!running) return;
     const dt = Math.min(48, t - last); last = t;
     const k = dt / 16.67;
     drawAmbient(t);
@@ -161,11 +219,16 @@
       const alpha = p.kind === 'trail' ? (1 - u) * 0.9 : (u < 0.7 ? 1 : 1 - (u - 0.7) / 0.3);
       fctx.globalAlpha = Math.max(0, alpha);
       fctx.fillStyle = p.c;
-      fctx.shadowColor = p.c; fctx.shadowBlur = p.kind === 'trail' ? 10 : 6;
+      fctx.shadowColor = p.c; fctx.shadowBlur = p.kind === 'trail' ? 0 : 6;
       if (p.kind === 'shard') {
         fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.rot);
         fctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
         fctx.restore();
+      } else if (p.kind === 'bubble') {
+        p.wob = (p.wob || 0) + 0.08; p.x += Math.sin(p.wob) * 0.4;
+        fctx.strokeStyle = p.c; fctx.lineWidth = 1;
+        fctx.beginPath(); fctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); fctx.stroke();
+        fctx.beginPath(); fctx.arc(p.x - p.size * 0.35, p.y - p.size * 0.35, Math.max(0.4, p.size * 0.22), 0, Math.PI * 2); fctx.fill();
       } else if (p.kind === 'coin') {
         const sx = Math.abs(Math.cos(p.rot));
         fctx.beginPath(); fctx.ellipse(p.x, p.y, p.size * 0.6 * Math.max(0.15, sx), p.size * 0.6, 0, 0, Math.PI * 2); fctx.fill();
@@ -194,6 +257,8 @@
   function setTheme(name) {
     theme = palette[name] ? name : 'tavern';
     spawnAmbient();
+    cuts.length = 0;
+    redrawMarks();
   }
   setTheme(document.documentElement.getAttribute('data-theme') || 'tavern');
 
@@ -205,5 +270,9 @@
     setTimeout(() => el.classList.remove('shaking'), ms);
   }
 
-  window.FX = { burst, poof, rain, setTheme, shake, get theme() { return theme; } };
+  function setIdle(idle) {
+    if (idle) { running = false; parts.length = 0; rings.length = 0; }
+    else if (!running && !document.hidden) { running = true; last = performance.now(); requestAnimationFrame(frame); }
+  }
+  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, get theme() { return theme; } };
 })();
