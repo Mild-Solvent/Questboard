@@ -27,32 +27,74 @@
 
   // ---------- cut marks (session only: cleared on restart or theme switch) ----------
   const cuts = [];
+  // A sword gouge in the planks: a tapered V-cut with a lit lip and a shadowed lip,
+  // a dark bottom, wood fibres torn up along the edges and a hairline where the tip skidded.
   function drawCut(c) {
+    const n = 26, L = c.len, half = L / 2;
+    const top = [], bot = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = -half + t * L;
+      const yc = -c.bow * 4 * t * (1 - t);                       // slight curve of the swing
+      const w = c.w * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.75) * (t > 0.87 ? (1 - t) / 0.13 : 1);
+      const j = c.jit[i];
+      top.push([x, yc - w * (0.55 + j * 0.25)]);
+      bot.push([x, yc + w * (0.45 + j * 0.2)]);
+    }
+    const poly = (a, b) => { mctx.beginPath(); mctx.moveTo(a[0][0], a[0][1]); for (const p of a) mctx.lineTo(p[0], p[1]); for (let i = b.length - 1; i >= 0; i--) mctx.lineTo(b[i][0], b[i][1]); mctx.closePath(); };
+    const mid = top.map((p, i) => [p[0], (p[1] + bot[i][1]) / 2 + 0.4]);
     mctx.save();
     mctx.translate(c.x, c.y); mctx.rotate(c.a);
-    mctx.lineCap = 'round';
-    // raw wood showing inside the gash
-    mctx.strokeStyle = 'rgba(222, 168, 104, .8)'; mctx.lineWidth = 4.5;
-    mctx.beginPath(); mctx.moveTo(-c.len / 2, 1.2); mctx.lineTo(c.len / 2, 1.2); mctx.stroke();
-    // the dark cut
-    mctx.strokeStyle = 'rgba(10, 5, 2, .95)'; mctx.lineWidth = 2.4;
-    mctx.beginPath(); mctx.moveTo(-c.len / 2, 0); mctx.quadraticCurveTo(0, -c.bow, c.len / 2, 0); mctx.stroke();
-    // splinters
-    mctx.strokeStyle = 'rgba(10, 5, 2, .7)'; mctx.lineWidth = 1.2;
-    for (const sp of c.splinters) { mctx.beginPath(); mctx.moveTo(sp.x, 0); mctx.lineTo(sp.x + sp.dx, sp.dy); mctx.stroke(); }
+    // dent around the cut (soft shadow)
+    mctx.shadowColor = 'rgba(20, 8, 2, .45)'; mctx.shadowBlur = 3; mctx.shadowOffsetY = 1;
+    // shadowed upper wall of the V
+    mctx.fillStyle = '#2a1206'; poly(top, mid); mctx.fill();
+    mctx.shadowColor = 'transparent';
+    // lit lower wall: fresh, pale raw wood
+    const g = mctx.createLinearGradient(0, -c.w, 0, c.w);
+    g.addColorStop(0, '#8a4c22'); g.addColorStop(0.5, '#e7b47a'); g.addColorStop(1, '#f6d4a0');
+    mctx.fillStyle = g; poly(mid, bot); mctx.fill();
+    // the dark bottom line of the V
+    mctx.strokeStyle = 'rgba(18, 7, 2, .95)'; mctx.lineWidth = 1.1; mctx.lineJoin = 'round';
+    mctx.beginPath(); mid.forEach((p, i) => (i ? mctx.lineTo(p[0], p[1]) : mctx.moveTo(p[0], p[1]))); mctx.stroke();
+    // crisp outline of the lips
+    mctx.strokeStyle = 'rgba(40, 16, 4, .8)'; mctx.lineWidth = 0.8;
+    mctx.beginPath(); top.forEach((p, i) => (i ? mctx.lineTo(p[0], p[1]) : mctx.moveTo(p[0], p[1]))); mctx.stroke();
+    mctx.strokeStyle = 'rgba(255, 226, 180, .55)'; mctx.lineWidth = 0.9;
+    mctx.beginPath(); bot.forEach((p, i) => (i ? mctx.lineTo(p[0], p[1] + 0.6) : mctx.moveTo(p[0], p[1] + 0.6))); mctx.stroke();
+    // torn fibres curling up from the edges, pointing along the swing
+    for (const f of c.fibres) {
+      const e = (f.side < 0 ? top : bot)[f.i];
+      mctx.strokeStyle = f.side < 0 ? 'rgba(60, 26, 8, .85)' : 'rgba(240, 198, 140, .9)';
+      mctx.lineWidth = f.th;
+      mctx.beginPath(); mctx.moveTo(e[0], e[1]);
+      mctx.quadraticCurveTo(e[0] + f.len * 0.6, e[1] + f.side * f.lift * 0.3, e[0] + f.len, e[1] + f.side * f.lift);
+      mctx.stroke();
+    }
+    // hairline skid past the tip, and a faint parallel scratch from the blade's edge
+    mctx.strokeStyle = 'rgba(30, 12, 3, .55)'; mctx.lineWidth = 0.7;
+    mctx.beginPath(); mctx.moveTo(half - 2, 0); mctx.lineTo(half + c.skid, c.skidDy); mctx.stroke();
+    mctx.strokeStyle = 'rgba(30, 12, 3, .28)'; mctx.lineWidth = 0.6;
+    mctx.beginPath(); mctx.moveTo(-half * 0.6, c.w + 3); mctx.quadraticCurveTo(0, c.w + 3 - c.bow * 0.6, half * 0.5, c.w + 2.5); mctx.stroke();
     mctx.restore();
   }
   function redrawMarks() { mctx.clearRect(0, 0, W, H); if (theme === 'tavern') cuts.forEach(drawCut); }
   function cut(x, y) {
     if (theme !== 'tavern') return splash(x, y);
     const c = {
-      x, y, a: -(Math.PI / 4) + rnd(-0.5, 0.5), len: rnd(60, 130), bow: rnd(-4, 4),
-      splinters: Array.from({ length: 2 + (Math.random() * 3 | 0) }, () => ({ x: rnd(-30, 30), dx: rnd(-8, 8), dy: rnd(-6, 6) })),
+      x, y, a: -(Math.PI / 4) + rnd(-0.45, 0.45), len: rnd(70, 140), bow: rnd(-3, 3), w: rnd(3.4, 5.4),
+      jit: Array.from({ length: 27 }, () => rnd(-1, 1)),
+      fibres: Array.from({ length: 5 + (Math.random() * 6 | 0) }, () => ({ i: 3 + (Math.random() * 20 | 0), side: Math.random() < 0.5 ? -1 : 1, len: rnd(3, 9), lift: rnd(1, 3.5), th: rnd(0.6, 1.2) })),
+      skid: rnd(4, 14), skidDy: rnd(-1.5, 1.5),
     };
+    // wood chips fly off the cut
+    for (let i = 0; i < 8; i++) {
+      const ang = c.a + Math.PI / 2 + rnd(-0.8, 0.8) * (Math.random() < 0.5 ? 1 : -1), sp = rnd(1.5, 4);
+      parts.push({ x: x + rnd(-10, 10), y: y + rnd(-6, 6), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 2, life: 0, max: rnd(400, 800), size: rnd(1.2, 2.4), c: pick(['#e7b47a', '#c8874a', '#f6d4a0']), kind: 'dot', g: 0.22 });
+    }
     cuts.push(c); if (cuts.length > 400) cuts.shift();
     drawCut(c);
     // sparks along the blade
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 8; i++) {
       const t = rnd(-c.len / 2, c.len / 2), ang = c.a + rnd(-0.6, 0.6) + (Math.random() < 0.5 ? Math.PI : 0), sp = rnd(2, 6);
       parts.push({ x: x + Math.cos(c.a) * t, y: y + Math.sin(c.a) * t, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 1, life: 0, max: rnd(250, 550), size: rnd(1.5, 3), c: pick(['#fff6d5', '#ffd36b', '#ffb347']), kind: 'dot', g: 0.18 });
     }

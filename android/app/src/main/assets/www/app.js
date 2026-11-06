@@ -96,13 +96,26 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15;
     return (h >>> 0) / 4294967296;
   }
-  function tornEdge(key) {
-    const pts = []; const steps = 14;
-    const j = (i) => Math.round(seeded(key, 100 + i) * 7);
-    for (let i = 0; i <= steps; i++) pts.push(`calc(${(i / steps * 100).toFixed(1)}% + 0px) ${j(i)}px`);
-    for (let i = 1; i < steps; i++) pts.push(`calc(100% - ${j(50 + i)}px) ${(i / steps * 100).toFixed(1)}%`);
-    for (let i = steps; i >= 0; i--) pts.push(`${(i / steps * 100).toFixed(1)}% calc(100% - ${j(100 + i)}px)`);
-    for (let i = steps - 1; i > 0; i--) pts.push(`${j(150 + i)}px ${(i / steps * 100).toFixed(1)}%`);
+  // Torn parchment outline (same as desktop 0.4.3): ragged bites, a few deep V-notches, and on
+  // some scraps a dog-eared bottom corner (cut off here, the folded flap is drawn in CSS).
+  function tornEdge(key, ear) {
+    const steps = 30, EAR = 26;
+    const j = (i) => {
+      const r = seeded(key, 100 + i);
+      if (r > 0.93) return 10 + Math.round(seeded(key, 400 + i) * 9);
+      return Math.round(r * r * 8);
+    };
+    const pct = (i) => (i / steps * 100).toFixed(2);
+    const pts = [];
+    for (let i = 0; i <= steps; i++) pts.push(`${pct(i)}% ${j(i)}px`);
+    const rEnd = ear === 'r' ? steps - 2 : steps;
+    for (let i = 1; i < rEnd; i++) pts.push(`calc(100% - ${j(50 + i)}px) ${pct(i)}%`);
+    if (ear === 'r') pts.push(`100% calc(100% - ${EAR}px)`, `calc(100% - ${EAR}px) 100%`);
+    const bStart = ear === 'r' ? steps - 2 : steps, bEnd = ear === 'l' ? 2 : 0;
+    for (let i = bStart; i >= bEnd; i--) pts.push(`${pct(i)}% calc(100% - ${j(100 + i)}px)`);
+    if (ear === 'l') pts.push(`${EAR}px 100%`, `0px calc(100% - ${EAR}px)`);
+    const lStart = ear === 'l' ? steps - 2 : steps - 1;
+    for (let i = lStart; i > 0; i--) pts.push(`${j(150 + i)}px ${pct(i)}%`);
     return `polygon(${pts.join(', ')})`;
   }
 
@@ -116,7 +129,17 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       wrap.style.setProperty('--i', i);
       wrap.style.setProperty('--rot', `${seeded(g.title, 1) * 2 - 1}deg`);
       wrap.style.setProperty('--nx', `${Math.round(seeded(g.title, 2) * 40 - 20)}px`);
-      el.style.setProperty('--tear', tornEdge(g.title));
+      const earPick = seeded(g.title, 7);
+      const ear = isFeatured(g) ? (earPick < 0.6 ? 'l' : '') : (earPick < 0.35 ? 'l' : earPick < 0.7 ? 'r' : '');
+      el.style.setProperty('--tear', tornEdge(g.title, ear));
+      if (ear) el.dataset.ear = ear;
+      // age spots and fold creases, placed per scrap so every paper looks different
+      el.style.setProperty('--s1x', `${Math.round(10 + seeded(g.title, 11) * 80)}%`);
+      el.style.setProperty('--s1y', `${Math.round(10 + seeded(g.title, 12) * 80)}%`);
+      el.style.setProperty('--s2x', `${Math.round(10 + seeded(g.title, 13) * 80)}%`);
+      el.style.setProperty('--s2y', `${Math.round(10 + seeded(g.title, 14) * 80)}%`);
+      el.style.setProperty('--fx', `${Math.round(30 + seeded(g.title, 15) * 40)}%`);
+      el.style.setProperty('--fy', `${Math.round(35 + seeded(g.title, 16) * 30)}%`);
       wrap.dataset.group = g.title;
       if (isFeatured(g)) { wrap.classList.add('featured'); el.classList.add('featured'); }
       const cleanTitle = g.title.replace(/^active:\s*/i, '');
