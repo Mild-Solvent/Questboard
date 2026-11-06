@@ -337,6 +337,11 @@
   }
   function scheduleSync(ms = 2500) { if (!Sync.ready) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => runSync('change'), ms); }
 
+  // What a brand-new install shows before it has ever synced. It must never be merged into
+  // an existing devbox board, or every fresh device would add a stray "Today / Add a quest".
+  const DEFAULT_QUESTS = '# Quests\n\n## Active: Today\n- [ ] Add a quest\n';
+  const isUntouchedDefault = (text) => text === serialize(parse(DEFAULT_QUESTS));
+
   async function runSync(reason) {
     if (!Sync.ready || syncing || busy) { if (busy) scheduleSync(1500); return; }
     syncing = true; setSyncStatus('busy');
@@ -346,7 +351,8 @@
       const localText = serialize(doc);
       const baseText = settings.base.questsText || '';
       let merged = localText;
-      if (remote.text !== null && remote.text !== baseText) merged = window.Merge.merge(baseText, localText, remote.text);
+      if (remote.text !== null && !baseText && isUntouchedDefault(localText)) merged = remote.text;   // first sync on a fresh device: adopt the board
+      else if (remote.text !== null && remote.text !== baseText) merged = window.Merge.merge(baseText, localText, remote.text);
       if (merged !== localText) { doc = parse(merged); render(); saveLocal(); if (reason !== 'boot') toast('Board updated from the devbox.'); }
       if (remote.text === null || merged !== remote.text) {
         let res = await Sync.put('QUESTS.md', merged, remote.etag);
@@ -494,7 +500,7 @@
       if (typeof legacy.sound === 'boolean') settings.sound = legacy.sound;
     }
     const questsText = await api.readFile('QUESTS.md');
-    doc = parse(questsText || '# Quests\n\n## Active: Today\n- [ ] Add a quest\n');
+    doc = parse(questsText || DEFAULT_QUESTS);
     saveLocal();
 
     api.onQuestsChanged((fresh) => {
