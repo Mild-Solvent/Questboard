@@ -67,6 +67,8 @@
 
   // ---------- rendering ----------
   const boards = $('#boards');
+  const cutLayer = document.createElement('div');
+  cutLayer.className = 'cut-layer';
   const tplGroup = $('#tpl-group');
   const tplQuest = $('#tpl-quest');
 
@@ -107,6 +109,7 @@
   function render() {
     const scroll = boards.scrollTop;
     boards.innerHTML = '';
+    boards.prepend(cutLayer);
     const ordered = [...doc.groups].sort((a, b) => (isFeatured(b) ? 1 : 0) - (isFeatured(a) ? 1 : 0));
     ordered.forEach((g, i) => {
       const wrap = tplGroup.content.firstElementChild.cloneNode(true);
@@ -237,6 +240,24 @@
   }
   boards.addEventListener('pointerup', endDrag);
   boards.addEventListener('pointercancel', endDrag);
+
+  // Gouges live inside #boards, in content coordinates, so they scroll with the wood and the papers.
+  FX.setMarkLayer((c) => {
+    if (cutLayer.parentNode !== boards) boards.prepend(cutLayer);
+    const r = boards.getBoundingClientRect();
+    const x = c.x - r.left - boards.clientLeft + boards.scrollLeft;
+    const y = c.y - r.top - boards.clientTop + boards.scrollTop;
+    const cv = document.createElement('canvas');
+    cv.className = 'cut-mark';
+    const size = FX.paintCut(cv, c);
+    cv.style.left = `${Math.round(x - size / 2)}px`;
+    cv.style.top = `${Math.round(y - size / 2)}px`;
+    // the layer clips to the current content so a gouge at the edge never adds scrollbars
+    cutLayer.style.width = `${boards.scrollWidth}px`;
+    cutLayer.style.height = `${boards.scrollHeight}px`;
+    cutLayer.appendChild(cv);
+    while (cutLayer.children.length > 80) cutLayer.firstChild.remove();
+  });
 
   // Clicking bare wood (or open water) leaves a mark: a sword cut in Tavern, a splash in Abyss.
   window.addEventListener('pointerdown', (e) => {
@@ -481,6 +502,7 @@
 
   // ---------- theme / prefs ----------
   function applyTheme(name) {
+    if (settings.theme !== name) cutLayer.innerHTML = '';
     settings.theme = name;
     document.documentElement.setAttribute('data-theme', name);
     FX.setTheme(name);
