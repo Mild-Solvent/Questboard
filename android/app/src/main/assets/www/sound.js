@@ -66,6 +66,18 @@
         noise({ dur: 0.12, gain: 0.12, hp: 2000 });
       }
     },
+    cut() {
+      if (!enabled) return;
+      noise({ dur: 0.09, gain: 0.22, hp: 3500 });
+      tone({ freq: 3200, type: 'sine', dur: 0.16, gain: 0.12, slide: -1400 });
+      tone({ freq: 180, type: 'triangle', t0: 0.02, dur: 0.08, gain: 0.18, slide: -80 });
+    },
+    splash() {
+      if (!enabled) return;
+      tone({ freq: 420, type: 'sine', dur: 0.18, gain: 0.3, slide: -300 });
+      tone({ freq: 900, type: 'sine', t0: 0.05, dur: 0.12, gain: 0.1, slide: 500 });
+      noise({ dur: 0.2, gain: 0.08, hp: 1500 });
+    },
     lift() { if (!enabled) return; noise({ dur: 0.08, gain: 0.12, hp: 2500 }); tone({ freq: 320, type: 'triangle', dur: 0.12, gain: 0.12, slide: 180 }); },
     nail() {
       if (!enabled) return;

@@ -74,6 +74,13 @@ async function waitHealth() {
     await page.screenshot({ path: path.join(outDir, 'phone-abyss-start.png') });
     await page.click('#btn-theme');
 
+    // tapping bare wood leaves a sword cut (drawn on the #marks canvas)
+    const box = await page.$eval('#boards', (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 6, y: r.bottom - 6 }; });
+    await page.mouse.click(box.x, box.y);
+    await sleep(200);
+    const marked = await page.$eval('#marks', (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; });
+    check('tap on wood leaves a cut mark', marked);
+
     // complete a quest by tapping its row
     const firstText = await page.textContent('.quest .quest-text');
     await page.click('.quest');
@@ -119,6 +126,7 @@ async function waitHealth() {
     await page.click('.board-wrap:not(.featured) .add-btn');
     await page.fill('.board-wrap:not(.featured) .add-input', 'Call grandma');
     await page.press('.board-wrap:not(.featured) .add-input', 'Enter');
+    await page.waitForFunction(() => window.Sync.isDirty(), null, { timeout: 3000 });   // local save landed, push pending
     const g2 = await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } });
     const edited2 = (await g2.text()).replace('- [ ] Go outside', '- [x] Go outside');
     r = await fetch(`${SYNC_URL}/QUESTS.md`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'If-Match': g2.headers.get('etag') }, body: edited2 });

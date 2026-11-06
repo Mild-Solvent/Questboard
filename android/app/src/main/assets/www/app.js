@@ -154,6 +154,16 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     renderHero();
   }
 
+  // Tapping bare wood (or open water) leaves a mark: a sword cut in Tavern, a splash in Abyss.
+  window.addEventListener('pointerdown', (e) => {
+    const t = e.target;
+    if (!(t === boards || t === document.body || t.id === 'app')) return;
+    Sound.unlock();
+    if (prefs.theme === 'abyss') { FX.splash(e.clientX, e.clientY); Sound.splash && Sound.splash(); }
+    else { FX.cut(e.clientX, e.clientY); Sound.cut && Sound.cut(); }
+    api.vibrate(12);
+  });
+
   function questEl(g, q) {
     const li = tplQuest.content.firstElementChild.cloneNode(true);
     li.classList.toggle('done', q.done);
@@ -449,7 +459,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
     api.on('back', () => { if (!sheet.hidden) { closeSheet(); return true; } return false; });
     api.on('resume', onResume);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') onResume(); });
+    document.addEventListener('visibilitychange', () => { if (FX.setIdle) FX.setIdle(document.hidden); if (document.visibilityState === 'visible') onResume(); });
     window.addEventListener('keydown', (e) => {
       if (e.target && e.target.tagName === 'INPUT') return;
       if (e.key === 't' || e.key === 'T') toggleTheme();
