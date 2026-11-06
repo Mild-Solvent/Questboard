@@ -59,6 +59,7 @@ button, a, input, summary, .rune { cursor: auto; }
 /* ---------- boards ---------- */
 #boards { padding: 14px 14px 28px; grid-template-columns: 1fr; gap: 22px; -webkit-overflow-scrolling: touch; }
 #boards::-webkit-scrollbar { width: 0; }
+:root[data-theme="tavern"] #boards { margin: 6px 8px 0; }   /* desktop 14px frame is too wide on a phone */
 .board-wrap.featured { grid-column: auto; }
 :root[data-theme="tavern"] .board { padding: 20px 16px 12px; }
 :root[data-theme="tavern"] .board.featured { padding: 24px 18px 14px; }

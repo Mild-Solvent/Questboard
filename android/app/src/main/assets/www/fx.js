@@ -4,7 +4,7 @@
   const marks = document.getElementById('marks');
   const fx = document.getElementById('fx');
   const actx = ambient.getContext('2d');
-  const mctx = marks.getContext('2d');
+  const mctxMain = marks.getContext('2d');
   const fctx = fx.getContext('2d');
   let W = 0, H = 0, dpr = 1;
   let theme = 'tavern';
@@ -20,7 +20,7 @@
       c.width = Math.floor(W * dpr); c.height = Math.floor(H * dpr);
     }
     actx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mctxMain.setTransform(dpr, 0, 0, dpr, 0, 0);
     fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     redrawMarks();
   }
@@ -29,7 +29,8 @@
   const cuts = [];
   // A sword gouge in the planks: a tapered V-cut with a lit lip and a shadowed lip,
   // a dark bottom, wood fibres torn up along the edges and a hairline where the tip skidded.
-  function drawCut(c) {
+  function drawCut(c, ctx) {
+    const mctx = ctx || mctxMain;
     const n = 26, L = c.len, half = L / 2;
     const top = [], bot = [];
     for (let i = 0; i <= n; i++) {
@@ -77,7 +78,7 @@
     mctx.beginPath(); mctx.moveTo(-half * 0.6, c.w + 3); mctx.quadraticCurveTo(0, c.w + 3 - c.bow * 0.6, half * 0.5, c.w + 2.5); mctx.stroke();
     mctx.restore();
   }
-  function redrawMarks() { mctx.clearRect(0, 0, W, H); if (theme === 'tavern') cuts.forEach(drawCut); }
+  function redrawMarks() { mctxMain.clearRect(0, 0, W, H); if (theme === 'tavern') cuts.forEach((c) => drawCut(c)); }
   function cut(x, y) {
     if (theme !== 'tavern') return splash(x, y);
     const c = {
@@ -91,8 +92,8 @@
       const ang = c.a + Math.PI / 2 + rnd(-0.8, 0.8) * (Math.random() < 0.5 ? 1 : -1), sp = rnd(1.5, 4);
       parts.push({ x: x + rnd(-10, 10), y: y + rnd(-6, 6), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 2, life: 0, max: rnd(400, 800), size: rnd(1.2, 2.4), c: pick(['#e7b47a', '#c8874a', '#f6d4a0']), kind: 'dot', g: 0.22 });
     }
-    cuts.push(c); if (cuts.length > 400) cuts.shift();
-    drawCut(c);
+    if (markHook) markHook(c);                       // the app pins the gouge into the scrolling board
+    else { cuts.push(c); if (cuts.length > 400) cuts.shift(); drawCut(c); }
     // sparks along the blade
     for (let i = 0; i < 8; i++) {
       const t = rnd(-c.len / 2, c.len / 2), ang = c.a + rnd(-0.6, 0.6) + (Math.random() < 0.5 ? Math.PI : 0), sp = rnd(2, 6);
@@ -316,5 +317,15 @@
     if (idle) { running = false; parts.length = 0; rings.length = 0; }
     else if (!running && !document.hidden) { running = true; last = performance.now(); requestAnimationFrame(frame); }
   }
-  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, get theme() { return theme; } };
+  // Mark layer: when set, each new gouge is passed to fn(c) instead of the fixed #marks canvas,
+  // and paintCut() renders it onto a small canvas of its own, centred on the cut.
+  let markHook = null;
+  function setMarkLayer(fn) { markHook = fn; }
+  function paintCut(canvas, c) {
+    const size = Math.ceil(c.len + 48);
+    canvas.width = size; canvas.height = size;
+    drawCut({ ...c, x: size / 2, y: size / 2 }, canvas.getContext('2d'));
+    return size;
+  }
+  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, get theme() { return theme; } };
 })();

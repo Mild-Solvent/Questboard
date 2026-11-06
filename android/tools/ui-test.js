@@ -74,12 +74,26 @@ async function waitHealth() {
     await page.screenshot({ path: path.join(outDir, 'phone-abyss-start.png') });
     await page.click('#btn-theme');
 
-    // tapping bare wood leaves a sword cut (drawn on the #marks canvas)
+    // tapping bare wood leaves a sword cut, pinned inside #boards so it scrolls with the quests (0.4.5)
     const box = await page.$eval('#boards', (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 6, y: r.bottom - 6 }; });
     await page.mouse.click(box.x, box.y);
     await sleep(200);
-    const marked = await page.$eval('#marks', (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; });
-    check('tap on wood leaves a cut mark', marked);
+    const marked = await page.$$eval('#boards .cut-layer .cut-mark', (els) => els.length);
+    check('tap on wood leaves a cut mark', marked === 1, marked);
+    check('wood scrolls with the quests', (await page.$eval('#boards', (e) => getComputedStyle(e).backgroundAttachment)).includes('local'));
+    const moved = await page.$eval('#boards', async (b) => {
+      const m = b.querySelector('.cut-mark');
+      const pad = document.createElement('div'); pad.style.height = '900px'; b.appendChild(pad);   // starter board is too short to scroll
+      const before = m.getBoundingClientRect().top;
+      const want = Math.min(120, b.scrollHeight - b.clientHeight);
+      if (want <= 0) return 'no-scroll';
+      b.scrollTop += want;
+      await new Promise((r) => setTimeout(r, 100));
+      const delta = before - m.getBoundingClientRect().top;
+      b.scrollTop = 0; pad.remove();
+      return Math.abs(delta - want) < 2 ? 'ok' : `moved ${delta} of ${want}`;
+    });
+    check('cut mark scrolls with the quests', moved === 'ok', moved);
 
     // complete a quest by tapping its row
     const firstText = await page.textContent('.quest .quest-text');
