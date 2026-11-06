@@ -19,7 +19,14 @@ Windows SmartScreen may warn because the installer is not code-signed. Click
 ## Your quests
 
 The app reads `Documents\Questboard\QUESTS.md` and watches it, so edits from any
-text editor (or from Claude over Remote Control) show up on the board instantly.
+text editor show up on the board instantly.
+
+With sync on (title bar → Sync, enter the devbox address and token), the board is
+shared with every other device: the devbox keeps the master copy in
+`~/questboard-data/`, served by `sync-server/server.py` behind `tailscale funnel`.
+Each app merges its local copy with the devbox copy (quest by quest, so two devices
+can edit at once) and pushes completions to a shared progress log, which is what
+XP and levels are computed from. See `sync-server/install.sh` for deployment.
 
 ```
 ## Active: Experiment Echo      <- "Active:" boards are featured
