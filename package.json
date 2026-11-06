@@ -9,29 +9,50 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --x64 --publish never",
-    "release": "electron-builder --win --x64 --publish always"
+    "dist": "electron-builder --win --x64 --ia32 --publish never",
+    "release": "electron-builder --win --x64 --ia32 --publish always"
   },
   "dependencies": {
     "electron-updater": "^6.8.11"
   },
   "devDependencies": {
-    "electron": "^45.2.2",
+    "electron": "43.8.7",
     "electron-builder": "^26.18.0"
   },
   "build": {
     "appId": "com.mildsolvent.questboard",
     "productName": "Questboard",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["src/**/*", "assets/**/*", "package.json"],
-    "publish": { "provider": "github", "owner": "Mild-Solvent", "repo": "Questboard", "releaseType": "release" },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "Mild-Solvent",
+      "repo": "Questboard",
+      "releaseType": "release"
+    },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
       "icon": "build/icon.png",
-      "artifactName": "Questboard-Setup-${version}.${ext}"
+      "artifactName": "Questboard-Setup-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": true,
+      "buildUniversalInstaller": false,
       "perMachine": false,
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
