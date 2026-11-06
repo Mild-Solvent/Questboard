@@ -198,6 +198,30 @@ input { user-select: text; }
 .toast { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 46; background: rgba(0,0,0,.78); color: var(--text); padding: 8px 14px; border-radius: 10px; font-size: 12.5px; box-shadow: 0 8px 30px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.1); animation: toast 3s ease both; pointer-events: none; max-width: 80vw; }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, 10px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 
+/* ---------- Sync button + modal ---------- */
+.tb-btn.err { color: #ff8a7a; }
+.tb-btn.err .ico { background: #ff5c48; box-shadow: 0 0 10px rgba(255,92,72,.6); }
+.tb-btn.busy .ico { animation: blink .8s infinite; }
+.ico-sync { border-radius: 50%; border: 2px solid currentColor; background: transparent; width: 11px; height: 11px; box-sizing: border-box; }
+.tb-btn.on .ico-sync { background: transparent; border-color: var(--accent); }
+.tb-btn.err .ico-sync { background: transparent; border-color: #ff5c48; }
+#modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
+#modal[hidden] { display: none; }
+.modal-card { width: min(560px, 92vw); color: var(--text); border-radius: 14px; padding: 22px 24px; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.15); font-size: 13.5px; line-height: 1.5; background: var(--bg0); }
+:root[data-theme="tavern"] .modal-card { background: linear-gradient(180deg, #3b2112, #2a160a); box-shadow: 0 30px 80px rgba(0,0,0,.6), inset 0 0 0 2px #6b3f1e; }
+:root[data-theme="abyss"] .modal-card { background: linear-gradient(180deg, rgba(20,80,120,.96), rgba(8,40,70,.96)); border: 1.5px solid rgba(255,255,255,.7); }
+.modal-card h3 { margin: 0 0 8px; font: 700 20px var(--font-head); }
+.modal-card p { margin: 6px 0; color: var(--text-dim); }
+.modal-card label { display: block; margin: 12px 0 4px; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-dim); }
+.modal-card input { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); font: 13px monospace; background: rgba(0,0,0,.35); color: var(--text); outline: none; }
+.modal-card input:focus { box-shadow: 0 0 0 3px var(--glow); }
+.modal-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; align-items: center; flex-wrap: wrap; }
+.modal-row .status { margin-right: auto; font-size: 12px; color: var(--text-dim); max-width: 100%; }
+.btn { padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08); color: var(--text); font: 600 13px var(--font-body); }
+.btn:hover { filter: brightness(1.15); }
+.btn.primary { background: var(--accent); color: var(--rune-ink); border-color: transparent; box-shadow: 0 0 14px var(--glow); }
+.btn.danger { color: #ff8a7a; }
+
 @media (max-width: 900px) { .hero-right { display: none; } .tb-label { display: none; } }
 
 /* =====================================================================
@@ -215,7 +239,7 @@ input { user-select: text; }
   --text: #f3e6c9; --text-dim: #c4a97c;
   --rune-bg: #c9a35e; --rune-ink: #3a240f;
   --bar-bg: #1d0f07; --bar-fill: linear-gradient(90deg, #ff8a2b, #ffd36b);
-    --cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(45 16 16)'><rect x='14.5' y='2' width='3' height='18' rx='1.2' fill='%23e8eef5' stroke='%232b1a0e' stroke-width='1'/><path d='M16 1 L17.6 3 L14.4 3 Z' fill='%23fff'/><rect x='10' y='19.5' width='12' height='3' rx='1.5' fill='%23ffb347' stroke='%232b1a0e' stroke-width='1'/><rect x='14.6' y='22' width='2.8' height='6' fill='%235a3414' stroke='%232b1a0e' stroke-width='.8'/><circle cx='16' cy='29.3' r='1.8' fill='%23ffb347' stroke='%232b1a0e' stroke-width='.8'/></g></svg>") 4 2, auto;
+    --cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(-45 16 16)'><rect x='14.5' y='2' width='3' height='18' rx='1.2' fill='%23e8eef5' stroke='%232b1a0e' stroke-width='1'/><path d='M16 1 L17.6 3 L14.4 3 Z' fill='%23fff'/><rect x='10' y='19.5' width='12' height='3' rx='1.5' fill='%23ffb347' stroke='%232b1a0e' stroke-width='1'/><rect x='14.6' y='22' width='2.8' height='6' fill='%235a3414' stroke='%232b1a0e' stroke-width='.8'/><circle cx='16' cy='29.3' r='1.8' fill='%23ffb347' stroke='%232b1a0e' stroke-width='.8'/></g></svg>") 5 5, auto;
 }
 :root[data-theme="tavern"] body {
   /* torch light, wood grain, plank seams, base wood */
@@ -319,7 +343,7 @@ input { user-select: text; }
   --text: #eaf9ff; --text-dim: #8fc3d6;
   --rune-bg: #0f5a78; --rune-ink: #03101f;
   --bar-bg: #072033; --bar-fill: linear-gradient(90deg, #22c7ff, #8ff5ff);
-    --cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(40 16 16)'><rect x='15' y='9' width='2.4' height='21' rx='1' fill='%23c8f9ff' stroke='%23052a45' stroke-width='.9'/><path d='M16.2 1.5 L18.4 9 L14 9 Z' fill='%233cf0ff' stroke='%23052a45' stroke-width='.9'/><path d='M8.5 4 C7 9 9 11.5 13.8 11.5 L13.8 9.4 C10.8 9.4 9.9 8 10.4 5.2 Z' fill='%233cf0ff' stroke='%23052a45' stroke-width='.9'/><path d='M23.9 4 C25.4 9 23.4 11.5 18.6 11.5 L18.6 9.4 C21.6 9.4 22.5 8 22 5.2 Z' fill='%233cf0ff' stroke='%23052a45' stroke-width='.9'/></g></svg>") 5 2, auto;
+    --cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(-40 16 16)'><rect x='15' y='9' width='2.4' height='21' rx='1' fill='%23c8f9ff' stroke='%23052a45' stroke-width='.9'/><path d='M16.2 1.5 L18.4 9 L14 9 Z' fill='%233cf0ff' stroke='%23052a45' stroke-width='.9'/><path d='M8.5 4 C7 9 9 11.5 13.8 11.5 L13.8 9.4 C10.8 9.4 9.9 8 10.4 5.2 Z' fill='%233cf0ff' stroke='%23052a45' stroke-width='.9'/><path d='M23.9 4 C25.4 9 23.4 11.5 18.6 11.5 L18.6 9.4 C21.6 9.4 22.5 8 22 5.2 Z' fill='%233cf0ff' stroke='%23052a45' stroke-width='.9'/></g></svg>") 7 5, auto;
 }
 :root[data-theme="abyss"] body {
   background:

@@ -1,10 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('questboard', {
-  loadQuests: () => ipcRenderer.invoke('quests:load'),
-  saveQuests: (md) => ipcRenderer.invoke('quests:save', md),
-  loadState: () => ipcRenderer.invoke('state:load'),
-  saveState: (s) => ipcRenderer.invoke('state:save', s),
+  readFile: (name) => ipcRenderer.invoke('data:read', name),
+  writeFile: (name, text) => ipcRenderer.invoke('data:write', name, text),
   getAutostart: () => ipcRenderer.invoke('autostart:get'),
   setAutostart: (v) => ipcRenderer.invoke('autostart:set', v),
   appInfo: () => ipcRenderer.invoke('app:info'),

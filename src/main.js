@@ -6,6 +6,7 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 let autoUpdater = null;
 try { ({ autoUpdater } = require('electron-updater')); } catch { /* dev without deps */ }
@@ -29,8 +30,9 @@ function dataDir() {
   try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
   return dir;
 }
+const DATA_FILES = new Set(['QUESTS.md', 'progress.json', 'settings.json', 'state.json']);
 const questsPath = () => path.join(dataDir(), 'QUESTS.md');
-const statePath = () => path.join(dataDir(), 'state.json');
+const dataFile = (name) => (DATA_FILES.has(name) ? path.join(dataDir(), name) : null);
 const markerPath = () => path.join(app.getPath('userData'), 'autostart-registered');
 
 function readFileSafe(p) {
@@ -75,7 +77,7 @@ function watchQuests() {
 // ---------- autostart ----------
 function autostartEnabled() {
   if (!app.isPackaged) return false;
-  return app.getLoginItemSettings().openAtLogin;
+  return app.getLoginItemSettings({ path: process.execPath, args: ['--autostart'] }).openAtLogin;
 }
 function setAutostart(enabled) {
   if (!app.isPackaged) return false;
@@ -150,15 +152,13 @@ function createTray() {
 }
 
 // ---------- IPC ----------
-ipcMain.handle('quests:load', () => { ensureQuestsFile(); return { text: readFileSafe(questsPath()) || '', path: questsPath() }; });
-ipcMain.handle('quests:save', (_e, markdown) => writeFileSafe(questsPath(), String(markdown)));
-ipcMain.handle('state:load', () => { const raw = readFileSafe(statePath()); try { return raw ? JSON.parse(raw) : null; } catch { return null; } });
-ipcMain.handle('state:save', (_e, state) => writeFileSafe(statePath(), JSON.stringify(state, null, 2)));
+ipcMain.handle('data:read', (_e, name) => { const p = dataFile(String(name)); if (!p) return null; if (name === 'QUESTS.md') ensureQuestsFile(); return readFileSafe(p); });
+ipcMain.handle('data:write', (_e, name, text) => { const p = dataFile(String(name)); return p ? writeFileSafe(p, String(text)) : false; });
 ipcMain.handle('autostart:get', () => ({ enabled: autostartEnabled(), available: app.isPackaged }));
 ipcMain.handle('autostart:set', (_e, enabled) => setAutostart(!!enabled));
 ipcMain.handle('app:info', () => ({
   version: app.getVersion(), packaged: app.isPackaged, dataDir: dataDir(), platform: process.platform,
-  launchedAtStartup: process.argv.includes('--autostart'), updateReady,
+  launchedAtStartup: process.argv.includes('--autostart'), updateReady, device: os.hostname(),
 }));
 ipcMain.on('window:minimize', () => win && win.minimize());
 ipcMain.on('window:hide', () => win && win.hide());

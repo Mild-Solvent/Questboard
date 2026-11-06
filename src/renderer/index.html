@@ -2,7 +2,7 @@
 <html lang="en" data-theme="tavern">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;" />
   <title>Questboard</title>
   <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
@@ -19,6 +19,7 @@
       </div>
       <div class="titlebar-actions">
         <button class="theme-switch" id="btn-theme" title="Switch theme (T)"><span class="seg seg-tavern">Tavern</span><span class="seg seg-abyss">Abyss</span></button>
+        <button class="tb-btn" id="btn-sync" title="Sync with the devbox"><span class="ico ico-sync"></span><span class="tb-label" id="sync-label">Sync off</span></button>
         <button class="tb-btn" id="btn-sound" title="Sound on/off (M)"><span class="ico ico-sound"></span></button>
         <button class="tb-btn" id="btn-autostart" title="Launch when Windows starts"><span class="ico ico-bolt"></span><span class="tb-label" id="autostart-label">Startup</span></button>
         <span class="tb-sep"></span>
@@ -51,9 +52,28 @@
       <span id="footer-hint">Click a rune to complete a quest. Right-click a quest to remove it. T = theme, M = sound.</span>
       <button class="link-btn" id="btn-reset-xp" title="Reset XP and level (quests stay)">reset xp</button>
       <button class="link-btn" id="btn-open-data" title="Open the folder with your quest file">quest file</button>
+      <button class="link-btn" id="btn-sync-now" title="Sync now">sync</button>
       <button class="link-btn hot" id="btn-update" hidden>restart to update</button>
       <span id="version"></span>
     </footer>
+  </div>
+
+  <div id="modal" hidden>
+    <div class="modal-card" role="dialog" aria-labelledby="modal-title">
+      <h3 id="modal-title">Sync with the devbox</h3>
+      <p>Your quests live on the devbox. Every device with this address and token shares one board; Claude edits it there and it shows up here within a minute.</p>
+      <label for="sync-url">Server address</label>
+      <input id="sync-url" type="url" placeholder="https://devbox.tailnet-name.ts.net/questboard" spellcheck="false" autocomplete="off" />
+      <label for="sync-token">Token</label>
+      <input id="sync-token" type="password" placeholder="paste the token from the devbox" spellcheck="false" autocomplete="off" />
+      <div class="modal-row">
+        <span class="status" id="modal-status"></span>
+        <button class="btn danger" id="modal-disconnect" type="button">Disconnect</button>
+        <button class="btn" id="modal-cancel" type="button">Cancel</button>
+        <button class="btn" id="modal-test" type="button">Test</button>
+        <button class="btn primary" id="modal-save" type="button">Save &amp; sync</button>
+      </div>
+    </div>
   </div>
 
   <div id="banner-layer" aria-live="polite"></div>
@@ -90,6 +110,8 @@
     </li>
   </template>
 
+  <script src="merge.js"></script>
+  <script src="sync.js"></script>
   <script src="fx.js"></script>
   <script src="sound.js"></script>
   <script src="app.js"></script>
