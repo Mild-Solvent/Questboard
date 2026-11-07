@@ -75,7 +75,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const today = new Date().toDateString();
     $('#stat-today').textContent = progress.log.filter((e) => new Date(e.at).toDateString() === today).length;
     $('#stat-total').textContent = progress.log.length;
-    $('#stat-open').textContent = doc.groups.flatMap((g) => g.items).filter((i) => i.type === 'quest' && !i.done).length;
+    $('#stat-open').textContent = doc.groups.reduce((n, g) => n + g.items.filter((i) => i.type === 'quest' && !doneNow(g, i)).length, 0);
   }
 
   // ---------- rendering ----------
@@ -90,6 +90,32 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     return esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
   }
   function isFeatured(g) { return /^active\b/i.test(g.title); }
+  // Daily boards ("## Life [daily]", desktop 0.4.6): their quests never move to Completed and are never
+  // set done in QUESTS.md. A tick is a progress-log entry that counts for 9 hours, so every device agrees.
+  const DAILY_RE = /\s*\[daily\]\s*$/i;
+  const DAILY_MS = 9 * 60 * 60 * 1000;
+  const isDaily = (g) => DAILY_RE.test(g.title);
+  const groupKey = (g) => g.title.replace(DAILY_RE, '');            // name used for looks and layout
+  function dailyEntry(q) {
+    const k = norm(q.text), now = Date.now();
+    let best = null;
+    for (const e of progress.log) {
+      if (norm(e.text) !== k) continue;
+      const t = Date.parse(e.at);
+      if (now - t < DAILY_MS && (!best || t > Date.parse(best.at))) best = e;
+    }
+    return best;
+  }
+  const doneNow = (g, q) => q.done || (isDaily(g) && !!dailyEntry(q));
+  function toggleDaily(g) {
+    g.title = isDaily(g) ? groupKey(g) : `${groupKey(g)} [daily]`;
+    persist(); render();
+    toast(isDaily(g) ? `${groupKey(g)} is a daily board now: ticks reset 9 hours after you make them.` : `${groupKey(g)} is a normal board again.`);
+  }
+  function countText(g) {
+    const open = g.items.filter((x) => x.type === 'quest' && !x.done);
+    return isDaily(g) ? `${open.filter((x) => !dailyEntry(x)).length} left today` : `${open.length} open`;
+  }
   const GLYPHS = { echo: '⚔', money: '¢', skill: '✦', commit: '⚑', life: '☀', deadline: '⌛', someday: '☾', meta: '⚙' };
 
   function seeded(str, salt) {
@@ -130,33 +156,44 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       const wrap = tplGroup.content.firstElementChild.cloneNode(true);
       const el = $('.board', wrap);
       wrap.style.setProperty('--i', i);
-      wrap.style.setProperty('--rot', `${seeded(g.title, 1) * 2 - 1}deg`);
-      wrap.style.setProperty('--nx', `${Math.round(seeded(g.title, 2) * 40 - 20)}px`);
-      const earPick = seeded(g.title, 7);
+      wrap.style.setProperty('--rot', `${seeded(groupKey(g), 1) * 2 - 1}deg`);
+      wrap.style.setProperty('--nx', `${Math.round(seeded(groupKey(g), 2) * 40 - 20)}px`);
+      const earPick = seeded(groupKey(g), 7);
       const ear = isFeatured(g) ? (earPick < 0.6 ? 'l' : '') : (earPick < 0.35 ? 'l' : earPick < 0.7 ? 'r' : '');
-      el.style.setProperty('--tear', tornEdge(g.title, ear));
+      el.style.setProperty('--tear', tornEdge(groupKey(g), ear));
       if (ear) el.dataset.ear = ear;
       // age spots and fold creases, placed per scrap so every paper looks different
-      el.style.setProperty('--s1x', `${Math.round(10 + seeded(g.title, 11) * 80)}%`);
-      el.style.setProperty('--s1y', `${Math.round(10 + seeded(g.title, 12) * 80)}%`);
-      el.style.setProperty('--s2x', `${Math.round(10 + seeded(g.title, 13) * 80)}%`);
-      el.style.setProperty('--s2y', `${Math.round(10 + seeded(g.title, 14) * 80)}%`);
-      el.style.setProperty('--fx', `${Math.round(30 + seeded(g.title, 15) * 40)}%`);
-      el.style.setProperty('--fy', `${Math.round(35 + seeded(g.title, 16) * 30)}%`);
-      wrap.dataset.group = g.title;
+      el.style.setProperty('--s1x', `${Math.round(10 + seeded(groupKey(g), 11) * 80)}%`);
+      el.style.setProperty('--s1y', `${Math.round(10 + seeded(groupKey(g), 12) * 80)}%`);
+      el.style.setProperty('--s2x', `${Math.round(10 + seeded(groupKey(g), 13) * 80)}%`);
+      el.style.setProperty('--s2y', `${Math.round(10 + seeded(groupKey(g), 14) * 80)}%`);
+      el.style.setProperty('--fx', `${Math.round(30 + seeded(groupKey(g), 15) * 40)}%`);
+      el.style.setProperty('--fy', `${Math.round(35 + seeded(groupKey(g), 16) * 30)}%`);
+      wrap.dataset.group = groupKey(g);
       if (isFeatured(g)) { wrap.classList.add('featured'); el.classList.add('featured'); }
-      const cleanTitle = g.title.replace(/^active:\s*/i, '');
+      const cleanTitle = groupKey(g).replace(/^active:\s*/i, '');
       $('.board-title', el).innerHTML = inline(cleanTitle);
       $('.board-glyph', el).textContent = GLYPHS[Object.keys(GLYPHS).find((k) => new RegExp(k, 'i').test(cleanTitle))] || cleanTitle.replace(/\W/g, '').charAt(0).toUpperCase();
       const quests = g.items.filter((x) => x.type === 'quest');
+      const daily = isDaily(g);
       const open = quests.filter((x) => !x.done);
       const done = quests.filter((x) => x.done);
-      $('.board-count', el).textContent = quests.length ? `${open.length} open` : '';
+      const left = daily ? open.filter((x) => !dailyEntry(x)).length : open.length;
+      $('.board-count', el).textContent = quests.length ? countText(g) : '';
+      el.classList.toggle('daily', daily);
+      const dbtn = document.createElement('button');
+      dbtn.type = 'button'; dbtn.className = 'daily-toggle' + (daily ? ' on' : '');
+      dbtn.textContent = daily ? '↻ daily' : '↻';
+      dbtn.title = daily ? 'Daily board: ticks reset 9 hours later. Tap to make it a normal board.' : 'Make this a daily board';
+      dbtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDaily(g); });
+      $('.board-head', el).appendChild(dbtn);
 
       const ul = $('.quests', el);
       open.forEach((q) => ul.appendChild(questEl(g, q)));
       if (!quests.length && !g.items.some((x) => x.type !== 'quest')) {
         const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'Nothing here yet.'; ul.appendChild(e);
+      } else if (daily && open.length && !left) {
+        const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'All done for today. See you tomorrow.'; ul.appendChild(e);
       } else if (quests.length && !open.length) {
         const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'Board cleared. Legendary.'; ul.appendChild(e);
       }
@@ -210,8 +247,18 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
   function questEl(g, q) {
     const li = tplQuest.content.firstElementChild.cloneNode(true);
-    li.classList.toggle('done', q.done);
+    li.classList.toggle('done', doneNow(g, q));
     $('.quest-text', li).innerHTML = inline(q.text);
+    if (isDaily(g)) {
+      li.classList.add('daily-quest');
+      const e = dailyEntry(q);
+      if (e) {
+        const left = DAILY_MS - (Date.now() - Date.parse(e.at));
+        const h = Math.floor(left / 3600000), m = Math.max(1, Math.floor((left % 3600000) / 60000));
+        const tag = document.createElement('span'); tag.className = 'resets'; tag.textContent = h ? `resets in ${h} h ${m} min` : `resets in ${m} min`;
+        $('.quest-text', li).appendChild(tag);
+      }
+    }
     const rune = $('.rune', li);
     // On a phone the whole row is the tap target; the × removes.
     li.addEventListener('click', (e) => { if (e.target.closest('.del')) return; toggle(g, q, li, rune); });
@@ -237,7 +284,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       const li = questEl(g, q); li.classList.add('arriving');
       $('.quests', el).querySelector('.empty')?.remove();
       $('.quests', el).appendChild(li);
-      $('.board-count', el).textContent = `${g.items.filter((x) => x.type === 'quest' && !x.done).length} open`;
+      $('.board-count', el).textContent = countText(g);
       input.value = '';
       Sound.add();
       api.vibrate(15);
@@ -255,9 +302,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     Sound.unlock();
     const r = rune.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    if (!q.done) {
+    const daily = isDaily(g);
+    const isDone = daily ? !!dailyEntry(q) : q.done;
+    if (!isDone) {
       busy = true;
-      q.done = true;
+      if (!daily) q.done = true;      // daily quests stay open in QUESTS.md; the log entry is the tick
       const before = levelInfo(xp()).level;
       progress.log.push({ text: q.text, at: new Date().toISOString(), device: Sync.device() });
       const after = levelInfo(xp()).level;
@@ -275,11 +324,13 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
       setTimeout(() => {
         if (after > before) levelUp(after);
-        li.classList.remove('completing'); li.classList.add('leaving');
+        li.classList.remove('completing');
+        if (daily) { busy = false; render(); return; }      // daily quests stay on the board, ticked
+        li.classList.add('leaving');
         setTimeout(() => { busy = false; render(); }, 480);
       }, 750);
     } else {
-      q.done = false;
+      if (!daily) q.done = false;
       // undo: drop the most recent log entry for this quest (if any)
       let idx = -1; progress.log.forEach((e, i) => { if (norm(e.text) === norm(q.text)) idx = i; });
       if (idx >= 0) { const e = progress.log.splice(idx, 1)[0]; progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`).slice(-500); }
@@ -425,6 +476,13 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   function startPolling() {
     clearInterval(pollTimer);
     pollTimer = setInterval(() => { if (document.visibilityState === 'visible') Sync.syncNow('poll'); }, 90 * 1000);
+    // daily ticks expire on their own: redraw when one flips, and keep the "resets in" labels fresh
+    let dailyStamp = '';
+    setInterval(() => {
+      if (busy || document.hidden) return;
+      const stamp = doc.groups.filter(isDaily).flatMap((g) => g.items.filter((i) => i.type === 'quest').map((q) => (dailyEntry(q) ? '1' : '0'))).join('');
+      if (stamp !== dailyStamp || document.querySelector('.quest .resets')) { if (dailyStamp || stamp.includes('1')) render(); dailyStamp = stamp; }
+    }, 60 * 1000);
   }
   let lastResumeSync = 0;
   function onResume() {

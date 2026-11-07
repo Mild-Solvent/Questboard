@@ -153,6 +153,36 @@ async function waitHealth() {
     const phoneText = await page.evaluate(() => window.questboard.readFile('QUESTS.md'));
     check('phone copy equals server copy', phoneText === serverNow);
 
+    // daily boards (desktop 0.4.6): "## Life [daily]" ticks live only in progress.json and stay on the board
+    const g3 = await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } });
+    const edited3 = (await g3.text()).replace('## Life\n', '## Life [daily]\n');
+    r = await fetch(`${SYNC_URL}/QUESTS.md`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'If-Match': g3.headers.get('etag') }, body: edited3 });
+    check('daily: remote rename accepted', r.status === 200, `status ${r.status}`);
+    await page.evaluate(() => window.Sync.syncNow('test'));
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('.board.daily .board-count')).some((e) => /left today/.test(e.textContent)), null, { timeout: 8000 });
+    const lifeTitle = await page.$eval('.board.daily .board-title', (e) => e.textContent.trim());
+    check('daily: board title hides the [daily] tag', lifeTitle === 'Life', lifeTitle);
+    const before = await page.$eval('.board.daily .board-count', (e) => e.textContent);
+    await page.click('.board.daily .quest:has-text("Buy milk")');
+    await sleep(1600);
+    const after = await page.$eval('.board.daily .board-count', (e) => e.textContent);
+    const stays = await page.$$eval('.board.daily .quests:not(.done-list) .quest.done .quest-text', (els) => els.map((e) => e.textContent));
+    check('daily: ticked quest stays on the board, ticked', stays.some((t) => t.startsWith('Buy milk')) && /resets in/.test(stays.join(' ')), stays.join(' | '));
+    check('daily: count goes down', parseInt(after, 10) === parseInt(before, 10) - 1, `${before} -> ${after}`);
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const q3 = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
+    const p3 = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text());
+    check('daily: QUESTS.md keeps it open', q3.includes('## Life [daily]') && q3.includes('- [ ] Buy milk') && !q3.includes('- [x] Buy milk'));
+    check('daily: progress.json has the tick', p3.log.some((e) => e.text === 'Buy milk'));
+    await page.click('.board.daily .quest:has-text("Buy milk")');
+    await sleep(600);
+    const untick = await page.$$eval('.board.daily .quest.done .quest-text', (els) => els.map((e) => e.textContent));
+    check('daily: untick clears it', !untick.some((t) => t.startsWith('Buy milk')), untick.join(' | '));
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const p4 = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text());
+    check('daily: untick removes the log entry on the server', !p4.log.some((e) => e.text === 'Buy milk'));
+    await page.screenshot({ path: path.join(outDir, 'phone-daily.png') });
+
     // back button closes the sheet
     await page.click('#btn-settings');
     await page.waitForSelector('#sheet:not([hidden])');

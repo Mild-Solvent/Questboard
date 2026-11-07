@@ -164,6 +164,15 @@ input { user-select: text; }
 .done-wrap summary::-webkit-details-marker { display: none; }
 .done-wrap summary:hover { opacity: 1; }
 .done-list .quest { font-size: 13px; }
+/* long lists scroll inside the paper instead of growing it over the boards below */
+.board .quests:not(.done-list) { max-height: 330px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.board-wrap.featured .board .quests:not(.done-list) { max-height: 440px; }
+.board .done-list { max-height: 168px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.board .quests::-webkit-scrollbar-corner { background: transparent; }
+.board .quests::-webkit-scrollbar { width: 7px; }
+.board .quests::-webkit-scrollbar-thumb { background: rgba(90, 55, 20, .35); border-radius: 6px; }
+.board .quests::-webkit-scrollbar-thumb:hover { background: rgba(90, 55, 20, .55); }
+:root[data-theme="abyss"] .board .quests::-webkit-scrollbar-thumb { background: rgba(160, 240, 255, .3); }
 
 .add-row { margin-top: 6px; }
 .add-btn { background: transparent; border: 1px dashed color-mix(in srgb, var(--ink) 35%, transparent); color: var(--ink-soft); border-radius: 8px; padding: 5px 10px; font: 12.5px var(--font-body); width: 100%; text-align: left; transition: background .15s, color .15s; }
@@ -243,6 +252,20 @@ input { user-select: text; }
 .ico-sync { border-radius: 50%; border: 2px solid currentColor; background: transparent; width: 11px; height: 11px; box-sizing: border-box; }
 .tb-btn.on .ico-sync { background: transparent; border-color: var(--accent); }
 .tb-btn.err .ico-sync { background: transparent; border-color: #ff5c48; }
+#backups { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
+#backups[hidden] { display: none; }
+.modal-card.wide { width: min(720px, 94vw); }
+.backup-tabs { display: flex; gap: 6px; margin: 12px 0 8px; }
+.btn.seg.on { background: var(--accent); color: var(--rune-ink); border-color: transparent; }
+.backup-list { list-style: none; margin: 0; padding: 0; max-height: min(420px, 55vh); overflow: auto; border-radius: 8px; background: rgba(0,0,0,.22); }
+.backup-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.backup-list li:last-child { border-bottom: 0; }
+.backup-list .when { font-weight: 600; }
+.backup-list .when small { display: block; font-weight: 400; color: var(--text-dim); font-size: 11.5px; }
+.backup-list .what { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+.backup-list .diff-minus { color: #ff8a7a; }
+.backup-list .diff-plus { color: #9fe08a; }
+.backup-list .empty { display: block; padding: 18px; color: var(--text-dim); text-align: center; }
 #modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
 #modal[hidden] { display: none; }
 .modal-card { width: min(560px, 92vw); color: var(--text); border-radius: 14px; padding: 22px 24px; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.15); font-size: 13.5px; line-height: 1.5; background: var(--bg0); }
@@ -487,3 +510,13 @@ input { user-select: text; }
 :root[data-theme="abyss"] .add-btn { font: 600 13px 'Rajdhani', sans-serif; letter-spacing: 1px; text-transform: uppercase; border: 1px dashed rgba(255,255,255,.5); color: #cfeeff; }
 :root[data-theme="abyss"] .add-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
 :root[data-theme="abyss"] .add-input { background: rgba(0,0,0,.3); color: #fff; font: 500 15px 'Rajdhani', sans-serif; }
+
+/* ---------- daily boards ---------- */
+.daily-toggle { margin-left: 6px; padding: 1px 7px; border-radius: 10px; border: 1px dashed currentColor; background: transparent; color: inherit; font: 600 11px var(--font-body); opacity: 0; transition: opacity .2s; }
+.board:hover .daily-toggle, .daily-toggle.on { opacity: .75; }
+.daily-toggle.on { border-style: solid; }
+.daily-toggle:hover { opacity: 1; }
+:root[data-theme="tavern"] .board-head .daily-toggle { position: absolute; left: 0; top: 4px; color: var(--ink-soft); }
+:root[data-theme="abyss"] .board-head .daily-toggle { color: var(--text); }
+.quest .resets { margin-left: 8px; font-size: 11px; font-style: italic; opacity: .6; white-space: nowrap; }
+.board.daily .quest.done .quest-text { text-decoration-thickness: 1.5px; }

@@ -131,3 +131,8 @@ button, a, input, summary, .rune { cursor: auto; }
 
 /* keyboard: keep the add-quest input visible */
 .add-form:not([hidden]) { scroll-margin-bottom: 80px; }
+
+/* ---------- daily boards / long lists (desktop 0.4.6) ---------- */
+.daily-toggle { opacity: .4; padding: 3px 9px; }           /* no hover on a phone: keep the toggle findable */
+.daily-toggle.on { opacity: .8; }
+.board .quests:not(.done-list), .board .done-list { overscroll-behavior: auto; }   /* a list at its end hands the swipe to the page */
