@@ -440,9 +440,7 @@ input { user-select: text; }
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 260' preserveAspectRatio='none'%3E%3Cpath d='M0 260 L0 200 Q60 150 110 190 L150 120 Q170 90 190 140 L240 180 Q300 110 340 170 L400 200 Q460 120 520 190 L560 110 Q575 60 600 100 L640 180 Q720 140 760 200 L820 150 Q880 90 930 170 L980 200 Q1040 130 1090 180 L1140 140 Q1180 110 1200 170 L1200 260 Z' fill='%23062233'/%3E%3Cpath d='M0 260 L0 230 Q80 200 140 225 L200 210 Q280 180 330 220 L420 235 Q500 190 560 230 L660 240 Q740 205 800 235 L900 225 Q980 190 1040 230 L1200 235 L1200 260 Z' fill='%23041826'/%3E%3C/svg%3E") bottom / 100% 260px no-repeat,
     radial-gradient(1000px 700px at 50% -20%, #0e5f80 0%, transparent 60%),
     radial-gradient(900px 500px at 0% 100%, #052a45 0%, transparent 60%),
-    linear-gradient(180deg, rgba(10, 54, 80, .45) 0%, rgba(4, 24, 43, .52) 50%, rgba(3, 16, 31, .7) 100%),
-    url("../../assets/tex/abyss.webp") 0 0 / 640px auto repeat,
-    #03101f;
+    linear-gradient(180deg, #0a3650 0%, #04182b 50%, #03101f 100%);
 }
 /* light shafts */
 :root[data-theme="abyss"] body::before {
@@ -752,7 +750,8 @@ html.raining #boards { filter: saturate(.85) brightness(.92); transition: filter
 @keyframes peek { 0%, 100% { transform: translateY(6px); } 40%, 60% { transform: translateY(0); } }
 
 /* spellbook */
-.spellbook .spell-list { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
+.spellbook { display: flex; flex-direction: column; max-height: 88vh; width: min(560px, 92vw); }
+.spellbook .spell-list { list-style: none; padding: 0 4px 0 0; margin: 10px 0; display: grid; gap: 8px; overflow-y: auto; min-height: 0; }
 .spellbook .spell-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 12px; align-items: center; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,.22); }
 .spellbook .spell-list li small { grid-column: 1 / -1; opacity: .8; }
 .spellbook .spell-list li.locked { opacity: .5; }
@@ -778,3 +777,69 @@ html[data-night] .garden-scene { background: radial-gradient(40px 40px at 82% 18
 html[data-night] #app::before { content: ''; position: fixed; inset: 0; z-index: 3; pointer-events: none; background: radial-gradient(140% 110% at 50% 30%, rgba(10,12,40,.18), rgba(5,6,22,.62) 100%); mix-blend-mode: multiply; }
 .candles span { position: fixed; z-index: 4; width: 340px; height: 340px; margin: -170px; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(255,190,90,.22), rgba(255,150,60,.08) 40%, transparent 70%); mix-blend-mode: screen; animation: candle 2.2s ease-in-out infinite alternate; }
 @keyframes candle { 0% { opacity: .75; transform: scale(1); } 30% { opacity: 1; } 60% { opacity: .85; transform: scale(1.04); } 100% { opacity: .95; transform: scale(.98); } }
+
+/* ---------- Abyss: a real sea floor ---------- */
+#sea { position: fixed; inset: 0; z-index: 0; pointer-events: none; display: none; overflow: hidden; }
+:root[data-theme="abyss"] #sea { display: block; }
+#sea .seabed { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 50vh; min-height: 280px; opacity: .95; filter: saturate(.85) brightness(.9); }
+#sea .seabed::after { content: ''; }
+#sea .kelp { fill: none; stroke-linecap: round; opacity: .85; animation: kelp-sway 7s ease-in-out infinite alternate; }
+@keyframes kelp-sway { from { transform: rotate(-3.5deg); } to { transform: rotate(3.5deg); } }
+#sea .coral { fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+#sea .coral.fan { opacity: .6; }
+#sea .coral.blob { opacity: .75; stroke: none; }
+#sea::after {   /* depth haze: the far end of the sea fades into blue */
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(3, 20, 38, 0) 40%, rgba(3, 26, 46, .35) 75%, rgba(2, 14, 28, .55) 100%);
+}
+#sea .fish { position: absolute; left: 0; animation: swim 60s linear infinite; opacity: .78; filter: saturate(.8) brightness(.85) drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+#sea .fish .fish-body { width: 100%; height: 100%; animation: fish-bob 3.2s ease-in-out infinite alternate; }
+#sea .fish svg { width: 100%; height: 100%; display: block; }
+#sea .fish:not(.rtl) svg { transform: scaleX(-1); }
+#sea .fish.rtl { animation-name: swim-rtl; }
+@keyframes swim { from { transform: translateX(-90px); } to { transform: translateX(calc(100vw + 90px)); } }
+@keyframes swim-rtl { from { transform: translateX(calc(100vw + 90px)); } to { transform: translateX(-90px); } }
+@keyframes fish-bob { from { transform: translateY(-6px) rotate(-2deg); } to { transform: translateY(6px) rotate(2deg); } }
+:root[data-theme="abyss"] body::before { opacity: .8; }
+
+/* ---------- secrets are easter eggs now: small, dim, and often tucked behind a board ---------- */
+.secret { width: 20px; height: 20px; opacity: .55; filter: drop-shadow(1px 1px 1px rgba(0,0,0,.6)) saturate(.6) brightness(.7); }
+.secret::after { animation-duration: 31s; width: 12px; height: 12px; margin: -6px; }
+.secret.tucked { z-index: 0; }
+.secret-layer { z-index: 0; }
+#boards > .board-wrap { z-index: 1; }
+
+/* ---------- what secrets do ---------- */
+#fun-layer { position: fixed; inset: 0; pointer-events: none; z-index: 49; overflow: hidden; }
+.fun-fall { position: absolute; top: -40px; animation: fun-fall 2.4s cubic-bezier(.4,.1,.8,.6) forwards; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+@keyframes fun-fall { to { transform: translateY(calc(100vh + 80px)) rotate(var(--spin, 360deg)); } }
+.fun-walk { position: absolute; bottom: 34px; left: -60px; font-size: 40px; animation: fun-walk 8s linear forwards; }
+.fun-walk.rtl { left: auto; right: -60px; animation-name: fun-walk-rtl; transform: scaleX(-1); }
+@keyframes fun-walk { 0% { transform: translateX(0) translateY(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(calc(var(--step, 1) * 0px)) translateY(-8px); } 100% { transform: translateX(calc(100vw + 120px)); } }
+@keyframes fun-walk-rtl { 100% { transform: scaleX(-1) translateX(calc(100vw + 120px)); } }
+.rune.rattle { animation: rattle .5s cubic-bezier(.3,1.6,.5,1); }
+@keyframes rattle { 0%, 100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-9px) rotate(-14deg); } 60% { transform: translateY(0) rotate(10deg); } }
+html.fx-tiny #boards { transform: scale(.82); transform-origin: 50% 0; transition: transform .8s cubic-bezier(.3,1.4,.5,1); }
+html.fx-giant #boards { transform: scale(1.12); transform-origin: 50% 0; transition: transform .8s cubic-bezier(.3,1.4,.5,1); }
+html.fx-wobble #boards { animation: wobble-room 2.6s ease-in-out infinite; }
+@keyframes wobble-room { 0%, 100% { transform: rotate(0) skewX(0); } 25% { transform: rotate(.8deg) skewX(1.5deg); } 75% { transform: rotate(-.8deg) skewX(-1.5deg); } }
+html.fx-rainbow #app { animation: rainbow 4s linear infinite; }
+@keyframes rainbow { to { filter: hue-rotate(360deg); } }
+html.fx-mirror #boards { transform: scaleX(-1); }
+html.fx-disco #app { animation: disco .5s steps(1) infinite; }
+@keyframes disco { 0% { filter: hue-rotate(0) saturate(1.4); } 25% { filter: hue-rotate(90deg) saturate(1.6); } 50% { filter: hue-rotate(180deg) saturate(1.4); } 75% { filter: hue-rotate(270deg) saturate(1.6); } }
+
+/* ---------- more spells ---------- */
+.shape-glow { position: absolute; transform: translate(-50%, -50%); overflow: visible; animation: shape-glow 1.6s ease-out forwards; }
+.shape-glow polyline { fill: none; stroke: currentColor; stroke-width: .03; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 .02px currentColor); stroke-dasharray: 8; stroke-dashoffset: 8; animation: shape-draw .7s ease-out forwards; }
+.shape-glow { filter: drop-shadow(0 0 6px currentColor) drop-shadow(0 0 16px currentColor); }
+@keyframes shape-draw { to { stroke-dashoffset: 0; } }
+@keyframes shape-glow { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.8); } 15% { opacity: 1; } 70% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.25); } }
+.ward { position: fixed; inset: 10px; border: 3px solid var(--wc); border-radius: 14px; box-shadow: 0 0 24px var(--wc), inset 0 0 40px var(--wc); opacity: 0; animation: ward 2.4s ease-out forwards; }
+@keyframes ward { 0% { opacity: 0; transform: scale(.9); } 20% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.02); } }
+.shooting-star { position: absolute; width: 120px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, #fff, rgba(255,255,255,.6) 20%, rgba(155,231,255,0)); box-shadow: 0 0 8px #fff, 0 0 18px #9be7ff; transform-origin: 0 50%; }
+.shooting-star::before { content: '✦'; position: absolute; left: -9px; top: -10px; color: #fff; font-size: 18px; text-shadow: 0 0 10px #fff, 0 0 20px #ffd36b; }
+.float-heart { position: absolute; animation: float-heart 2.6s ease-out forwards; opacity: 0; }
+@keyframes float-heart { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 15% { opacity: 1; transform: translate(0, -10px) scale(1); } 100% { opacity: 0; transform: translate(var(--dx, 0), -220px) scale(1.2); } }
+html.vortex #boards { animation: vortex 1.5s cubic-bezier(.5,0,.3,1); transform-origin: var(--vx, 50%) var(--vy, 50%); }
+@keyframes vortex { 0% { transform: rotate(0) scale(1); } 45% { transform: rotate(7deg) scale(.96); } 70% { transform: rotate(-3deg) scale(1.01); } 100% { transform: rotate(0) scale(1); } }

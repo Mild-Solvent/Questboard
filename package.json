@@ -1,7 +1,7 @@
 {
   "name": "questboard",
   "productName": "Questboard",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Game-themed questboard that opens with Windows. Your quests, not your chores.",
   "main": "src/main.js",
   "author": "Mild-Solvent",

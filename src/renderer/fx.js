@@ -124,7 +124,7 @@
   // ---------- ambient (embers / bubbles) ----------
   const amb = [];
   function spawnAmbient() {
-    const n = theme === 'abyss' ? 40 : 30;
+    const n = theme === 'abyss' ? 28 : 30;
     amb.length = 0;
     for (let i = 0; i < n; i++) amb.push(newAmbient(true));
   }
@@ -135,20 +135,20 @@
       y: anywhere ? rnd(0, H) : H + 10,
       r: isAbyss ? rnd(1.5, 6) : rnd(1, 2.6),
       vx: rnd(-0.15, 0.15),
-      vy: isAbyss ? -rnd(0.25, 0.9) : -rnd(0.15, 0.6),
+      vy: isAbyss ? -rnd(0.12, 0.42) : -rnd(0.15, 0.6),
       a: rnd(0.15, 0.6),
       c: pick(palette[theme].ambient),
       wob: rnd(0, Math.PI * 2),
     };
   }
-  function drawAmbient(t) {
+  function drawAmbient(t, k = 1) {
     actx.clearRect(0, 0, W, H);
     const isAbyss = theme === 'abyss';
     for (let i = 0; i < amb.length; i++) {
       const p = amb[i];
-      p.wob += 0.02;
-      p.x += p.vx + Math.sin(p.wob) * (isAbyss ? 0.4 : 0.25);
-      p.y += p.vy;
+      p.wob += 0.02 * k;
+      p.x += (p.vx + Math.sin(p.wob) * (isAbyss ? 0.3 : 0.25)) * k;
+      p.y += p.vy * k;
       if (p.y < -12 || p.x < -12 || p.x > W + 12) amb[i] = newAmbient(false);
       const flicker = isAbyss ? 1 : 0.7 + 0.3 * Math.sin(t / 150 + p.wob * 3);
       actx.globalAlpha = p.a * flicker;
@@ -250,7 +250,7 @@
     if (!running) return;
     const dt = Math.min(48, t - last); last = t;
     const k = dt / 16.67;
-    drawAmbient(t);
+    drawAmbient(t, k);
 
     fctx.clearRect(0, 0, W, H);
     fctx.globalCompositeOperation = 'lighter';
@@ -311,8 +311,63 @@
   }
   requestAnimationFrame(frame);
 
+  // ---------- the Abyss sea floor: kelp, corals and fish, behind everything ----------
+  let sea = null;
+  function buildSea() {
+    if (sea) return;
+    sea = document.createElement('div');
+    sea.id = 'sea'; sea.setAttribute('aria-hidden', 'true');
+    const W0 = 1600, H0 = 420;
+    const kelp = [];
+    for (let i = 0; i < 26; i++) {
+      const x = rnd(0, W0), hgt = rnd(150, 400), wv = rnd(14, 34), seg = 5;
+      let d = `M${x.toFixed(0)} ${H0}`;
+      for (let k = 1; k <= seg; k++) { const y = H0 - (hgt * k) / seg; const cx = x + (k % 2 ? wv : -wv); d += ` Q${cx.toFixed(0)} ${(y + hgt / seg / 2).toFixed(0)} ${x.toFixed(0)} ${y.toFixed(0)}`; }
+      const g = ['#1f6b4a', '#2e7d4f', '#3f8f3a', '#1b5e52', '#4a8a2c'][(Math.random() * 5) | 0];
+      kelp.push(`<path class="kelp" d="${d}" stroke="${g}" stroke-width="${rnd(7, 15).toFixed(1)}" style="transform-origin:${x.toFixed(0)}px ${H0}px;animation-duration:${rnd(5, 10).toFixed(1)}s;animation-delay:-${rnd(0, 8).toFixed(1)}s"/>`);
+    }
+    const corals = [];
+    const CC = ['#ff6f91', '#ff9f5a', '#c77dff', '#ffd36b', '#ff5e7e', '#7ee8d3'];
+    for (let i = 0; i < 16; i++) {
+      const x = rnd(20, W0 - 20), base = H0 - rnd(4, 22), c = CC[(Math.random() * CC.length) | 0], kind = (Math.random() * 3) | 0;
+      if (kind === 0) {           // branching coral
+        let br = ''; const grow = (x0, y0, a, len, depth) => { const x1 = x0 + Math.cos(a) * len, y1 = y0 + Math.sin(a) * len; br += `M${x0.toFixed(0)} ${y0.toFixed(0)} L${x1.toFixed(0)} ${y1.toFixed(0)} `; if (depth > 0) { grow(x1, y1, a - rnd(0.3, 0.6), len * 0.72, depth - 1); grow(x1, y1, a + rnd(0.3, 0.6), len * 0.72, depth - 1); } };
+        grow(x, base, -Math.PI / 2 + rnd(-0.2, 0.2), rnd(40, 70), 3);
+        corals.push(`<path class="coral" d="${br}" stroke="${c}" stroke-width="${rnd(5, 9).toFixed(1)}"/>`);
+      } else if (kind === 1) {    // sea fan
+        const r = rnd(60, 110); let fan = '';
+        for (let k = 0; k <= 10; k++) { const a = -Math.PI + 0.25 + (k / 10) * (Math.PI - 0.5); fan += `M${x.toFixed(0)} ${base.toFixed(0)} Q${(x + Math.cos(a) * r * 0.5 + rnd(-6, 6)).toFixed(0)} ${(base + Math.sin(a) * r * 0.5).toFixed(0)} ${(x + Math.cos(a) * r).toFixed(0)} ${(base + Math.sin(a) * r).toFixed(0)} `; }
+        corals.push(`<path class="coral fan" d="${fan}" stroke="${c}" stroke-width="2.4"/>`);
+      } else {                    // brain coral / sponge
+        const rx = rnd(30, 55), ry = rx * rnd(0.5, 0.75);
+        corals.push(`<ellipse class="coral blob" cx="${x.toFixed(0)}" cy="${(base - ry * 0.6).toFixed(0)}" rx="${rx.toFixed(0)}" ry="${ry.toFixed(0)}" fill="${c}"/><path class="coral" d="M${(x - rx * 0.7).toFixed(0)} ${(base - ry * 0.6).toFixed(0)} q${(rx * 0.35).toFixed(0)} -10 ${(rx * 0.7).toFixed(0)} 0 t${(rx * 0.7).toFixed(0)} 0" stroke="rgba(0,0,0,.25)" stroke-width="2"/>`);
+      }
+    }
+    const rocks = [];
+    for (let i = 0; i < 9; i++) { const x = rnd(0, W0), rw = rnd(40, 110), rh = rw * rnd(0.35, 0.6); rocks.push(`<ellipse cx="${x.toFixed(0)}" cy="${H0 - 6}" rx="${rw.toFixed(0)}" ry="${rh.toFixed(0)}" fill="#0a2a3a"/>`); }
+    const sand = `<path d="M0 ${H0} L0 ${H0 - 40} Q200 ${H0 - 70} 420 ${H0 - 46} T860 ${H0 - 50} T1260 ${H0 - 38} T1600 ${H0 - 52} L1600 ${H0} Z" fill="#0b3346"/><path d="M0 ${H0} L0 ${H0 - 18} Q300 ${H0 - 36} 640 ${H0 - 20} T1600 ${H0 - 24} L1600 ${H0} Z" fill="#0d3d50"/>`;
+    sea.innerHTML = `<svg class="seabed" viewBox="0 0 ${W0} ${H0}" preserveAspectRatio="xMidYMax slice">${rocks.join('')}<g class="kelps">${kelp.join('')}</g>${corals.join('')}${sand}</svg>`;
+    // fish: a few loners and a small school, at different depths and speeds
+    const FISH = [
+      ['#ffd23f', '#ff9f1c'], ['#ff7b39', '#ffffff'], ['#4cc9f0', '#3a86ff'], ['#c77dff', '#7b2cbf'], ['#80ffdb', '#48bfe3'], ['#ff5d8f', '#ffd6e0'],
+    ];
+    const fishSvg = (a, b, stripes) => `<svg viewBox="0 0 60 32"><path d="M50 16 L60 5 L58 16 L60 27 Z" fill="${b}"/><ellipse cx="28" cy="16" rx="24" ry="12" fill="${a}"/>${stripes ? `<path d="M22 5 q-4 11 0 22 M34 6 q-3 10 0 20" stroke="${b}" stroke-width="3" fill="none"/>` : ''}<path d="M24 5 q6 -6 14 0" fill="${b}" opacity=".8"/><circle cx="12" cy="13" r="3.2" fill="#fff"/><circle cx="11.2" cy="13" r="1.7" fill="#04121c"/></svg>`;
+    const addFish = (y, size, dur, delay, rtl, col, stripes) => {
+      const f = document.createElement('div');
+      f.className = 'fish' + (rtl ? ' rtl' : '');
+      f.style.top = `${y}%`; f.style.width = `${size}px`; f.style.height = `${(size * 32 / 60).toFixed(0)}px`;
+      f.style.animationDuration = `${dur}s`; f.style.animationDelay = `-${delay}s`;
+      f.innerHTML = `<div class="fish-body" style="animation-delay:-${rnd(0, 3).toFixed(1)}s">${fishSvg(col[0], col[1], stripes)}</div>`;
+      sea.appendChild(f);
+    };
+    for (let i = 0; i < 7; i++) addFish(rnd(18, 82), rnd(26, 58), rnd(38, 80), rnd(0, 80), Math.random() < 0.5, FISH[i % FISH.length], i % 3 === 1);
+    const sy = rnd(30, 60), sd = rnd(50, 70), sdel = rnd(0, 60), rtl = Math.random() < 0.5;   // a little school
+    for (let i = 0; i < 6; i++) addFish(sy + rnd(-5, 5), rnd(14, 20), sd, sdel + i * rnd(0.5, 1.1), rtl, FISH[4], false);
+    document.body.insertBefore(sea, document.body.firstChild);
+  }
   function setTheme(name) {
     theme = palette[name] ? name : 'tavern';
+    if (theme === 'abyss') buildSea();
     spawnAmbient();
     cuts.length = 0;
     redrawMarks();
