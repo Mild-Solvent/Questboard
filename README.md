@@ -1,6 +1,6 @@
 # Questboard
 
-A game-themed questboard for Windows that opens by itself when Windows starts,
+A game-themed questboard for Windows and Android that opens by itself when Windows starts,
 and updates itself from this repo's releases. Quests are plain Markdown on your
 own PC; nothing personal lives in this repo.
 
@@ -21,12 +21,10 @@ Windows SmartScreen may warn because the installer is not code-signed. Click
 The app reads `Documents\Questboard\QUESTS.md` and watches it, so edits from any
 text editor show up on the board instantly.
 
-With sync on (title bar → Sync, enter the devbox address and token), the board is
-shared with every other device: the devbox keeps the master copy in
-`~/questboard-data/`, served by `sync-server/server.py` behind `tailscale funnel`.
-Each app merges its local copy with the devbox copy (quest by quest, so two devices
-can edit at once) and pushes completions to a shared progress log, which is what
-XP and levels are computed from. See `sync-server/install.sh` for deployment.
+Out of the box the board stays on this device. To share one board between your
+PC, phone and other devices, run your own small sync server and paste its address
+and token into **Sync** in the title bar. The guide, including a prompt you can
+hand to your AI agent, is in [docs/SYNC.md](docs/SYNC.md).
 
 ```
 ## Active: Experiment Echo      <- "Active:" boards are featured
@@ -35,7 +33,7 @@ XP and levels are computed from. See `sync-server/install.sh` for deployment.
 - a plain note                   <- shown as a note, not a quest
 ```
 
-XP and level live next to it in `state.json`.
+XP and level come from `progress.json` next to it.
 
 ## Use
 
@@ -52,5 +50,13 @@ npm start            # run from source
 npm run dist         # build the Windows installer into dist/ (Windows or CI)
 ```
 
-Pushing to `main` with a new `version` in `package.json` builds the installer on
-GitHub Actions and publishes release `v<version>`, which installed apps pick up.
+Releases are built on a Linux box with Wine (`npm run dist` makes the x64 and
+32-bit installers) and published as `v<version>` with the installers,
+`latest.yml` and the matching Android APK. Installed Windows apps update
+themselves from the latest release.
+
+## Android
+
+Each release also carries `Questboard-<version>-android.apk`. Install it on your
+phone (allow installing from your browser when asked). It installs over earlier
+versions. The Android app lives in `android/`.

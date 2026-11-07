@@ -1,0 +1,15 @@
+Set up a Questboard sync server for me, so my Questboard apps (Windows and Android) share one quest board.
+
+Questboard is open source: https://github.com/Mild-Solvent/Questboard
+The server is sync-server/server.py (Python 3 standard library only, no packages) and sync-server/install.sh installs it as a systemd user service and publishes it with Tailscale Funnel. The full guide is docs/SYNC.md in that repo; read it first.
+
+What I need from you:
+1. Pick a Linux machine I control that stays on (a home server, a Raspberry Pi, a small VPS or a cloud dev box). Check it has python3, systemd and Tailscale with Funnel allowed for this tailnet. If Tailscale or Funnel is missing, tell me exactly what to enable and wait for me.
+2. Clone https://github.com/Mild-Solvent/Questboard there and run: bash sync-server/install.sh
+   If a Questboard sync server for someone else already runs on that machine, do NOT reuse it. Install a separate one instead: QB_NAME=questboard-<my-name> QB_PORT=<a free port such as 8788> bash sync-server/install.sh
+   Each one has its own data folder, token and URL path, so two people's boards never mix.
+3. Check that https://<machine>.<tailnet>.ts.net/<path>/health answers {"ok": true}.
+4. Give me the sync address (the https URL ending in the path, for example /questboard). Do not print the token in the chat. Tell me the command to show it myself (cat ~/<name>-data/token) so I can paste it into the app.
+5. In the app: title bar (Windows) or the gear (Android), then Sync. Paste the address and the token, press Test, then Save.
+
+Rules: never send my token anywhere else, never point my apps at another person's server, and do not open any port other than through Tailscale Funnel.

@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 DATA_DIR = os.environ.get("QB_DATA_DIR", os.path.expanduser("~/questboard-data"))
 TOKEN_FILE = os.environ.get("QB_TOKEN_FILE", os.path.join(DATA_DIR, "token"))
 PORT = int(os.environ.get("QB_PORT", "8787"))
-PREFIX = "/questboard/"
+PREFIX = "/" + os.environ.get("QB_PREFIX", "questboard").strip("/") + "/"   # URL path, e.g. QB_PREFIX=questboard-sam
 FILES = {"QUESTS.md": "text/markdown; charset=utf-8", "progress.json": "application/json; charset=utf-8"}
 LOCK = threading.Lock()
 HISTORY_DIR = os.path.join(DATA_DIR, "history")

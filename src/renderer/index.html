@@ -78,12 +78,12 @@
 
   <div id="modal" hidden>
     <div class="modal-card" role="dialog" aria-labelledby="modal-title">
-      <h3 id="modal-title">Sync with the devbox</h3>
-      <p>Your quests live on the devbox. Every device with this address and token shares one board; Claude edits it there and it shows up here within a minute.</p>
+      <h3 id="modal-title">Sync your board</h3>
+      <p>Point every device you own at your own sync server and they share one board. Without sync the board stays on this device. Setting up a server takes a few minutes; the guide (and a prompt you can hand to your AI agent) is at github.com/Mild-Solvent/Questboard/blob/main/docs/SYNC.md. Never use someone else's address and token: you would be editing their board.</p>
       <label for="sync-url">Server address</label>
-      <input id="sync-url" type="url" placeholder="https://devbox.tailnet-name.ts.net/questboard" spellcheck="false" autocomplete="off" />
+      <input id="sync-url" type="url" placeholder="https://your-machine.your-tailnet.ts.net/questboard" spellcheck="false" autocomplete="off" />
       <label for="sync-token">Token</label>
-      <input id="sync-token" type="password" placeholder="paste the token from the devbox" spellcheck="false" autocomplete="off" />
+      <input id="sync-token" type="password" placeholder="paste the token from your server" spellcheck="false" autocomplete="off" />
       <div class="modal-row">
         <span class="status" id="modal-status"></span>
         <button class="btn danger" id="modal-disconnect" type="button">Disconnect</button>
