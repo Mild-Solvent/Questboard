@@ -40,7 +40,41 @@
 
   // ---------- XP / rank ----------
   const xpForLevel = (lvl) => 100 + (lvl - 1) * 50;
-  const totalXp = () => progress.log.length * XP_PER_QUEST;
+  const totalXp = () => progress.log.reduce((n, e) => n + (Number(e.xp) || XP_PER_QUEST), 0);
+  const questLog = () => progress.log.filter((e) => !e.secret);
+
+  // Rank tiers: every three levels the crest turns into a better metal or gem.
+  const TIERS = [
+    { name: 'Bronze', from: 1, a: '#ffd2a1', b: '#9a5320', glow: 'rgba(240,150,80,.55)' },
+    { name: 'Silver', from: 4, a: '#ffffff', b: '#8494a8', glow: 'rgba(220,235,255,.6)' },
+    { name: 'Gold', from: 7, a: '#fff4b0', b: '#c88a10', glow: 'rgba(255,205,60,.7)' },
+    { name: 'Emerald', from: 10, a: '#c4ffe0', b: '#0f8a4c', glow: 'rgba(60,230,140,.65)' },
+    { name: 'Sapphire', from: 13, a: '#cfe6ff', b: '#1f50c8', glow: 'rgba(80,150,255,.75)' },
+    { name: 'Ruby', from: 16, a: '#ffd0d6', b: '#b0142e', glow: 'rgba(255,60,90,.7)' },
+    { name: 'Amethyst', from: 19, a: '#f0dcff', b: '#7027b8', glow: 'rgba(180,90,255,.75)' },
+    { name: 'Diamond', from: 22, a: '#ffffff', b: '#6fd3ff', glow: 'rgba(190,240,255,.9)' },
+    { name: 'Mythic', from: 26, a: '#fff0b0', b: '#ff3fd0', glow: 'rgba(255,120,220,.9)' },
+  ];
+  const tierIndex = (level) => { let i = 0; TIERS.forEach((t, j) => { if (level >= t.from) i = j; }); return i; };
+  const tierColors = (t) => [t.a, t.b, '#ffffff', t.b, '#ffd36b'];
+  function applyTier(level) {
+    const i = tierIndex(level), t = TIERS[i], root = document.documentElement.style;
+    root.setProperty('--tier-a', t.a); root.setProperty('--tier-b', t.b); root.setProperty('--tier-glow', t.glow);
+    $('#hero').dataset.tier = t.name.toLowerCase();
+    $('#hero').style.setProperty('--tier-i', i);
+    $('#tier-name').textContent = t.name;
+    return i;
+  }
+
+  // "Cleared today" heats up the more you clear in one day.
+  const HEAT = [
+    { at: 0, lbl: 'cleared today' }, { at: 1, lbl: 'cleared today' }, { at: 3, lbl: 'on fire' },
+    { at: 5, lbl: 'blazing!' }, { at: 8, lbl: 'inferno!!' }, { at: 12, lbl: 'legendary day' },
+  ];
+  const heatFor = (n) => { let h = 0; HEAT.forEach((x, i) => { if (n >= x.at) h = i; }); return h; };
+  let lastToday = null, lastHeat = null;
+  const HEAT_COLORS = [null, ['#ffd36b', '#ffb347'], ['#ffb347', '#ff6a2b', '#ffd36b'], ['#ff6a2b', '#ff3b1f', '#ffd36b', '#fff1c2'],
+    ['#9be7ff', '#ffffff', '#5ab8ff', '#ffd36b'], ['#ff5fd2', '#b36bff', '#ffffff', '#ffd36b', '#5ab8ff']];
   function levelInfo(xp) {
     let lvl = 1, rem = xp;
     while (rem >= xpForLevel(lvl)) { rem -= xpForLevel(lvl); lvl++; }
@@ -57,11 +91,23 @@
     const li = levelInfo(totalXp());
     $('#level-num').textContent = li.level;
     $('#rank-name').textContent = rankName(li.level);
+    applyTier(li.level);
     $('#xp-fill').style.width = `${Math.round((li.into / li.need) * 100)}%`;
     $('#xp-label').textContent = `${li.into} / ${li.need} XP`;
     const today = new Date().toDateString();
-    $('#stat-today').textContent = progress.log.filter((e) => new Date(e.at).toDateString() === today).length;
-    $('#stat-total').textContent = progress.log.length;
+    const n = questLog().filter((e) => new Date(e.at).toDateString() === today).length;
+    const heat = heatFor(n), box = $('#stat-today-box');
+    $('#stat-today').textContent = n;
+    box.dataset.heat = String(heat);
+    $('#stat-today-lbl').textContent = HEAT[heat].lbl;
+    if (lastToday !== null && n > lastToday) {
+      const num = $('#stat-today'); num.classList.remove('pop'); void num.offsetWidth; num.classList.add('pop');
+      const r = box.getBoundingClientRect();
+      FX.burst(r.left + r.width / 2, r.top + r.height / 2, { count: 16 + heat * 10, power: 0.5 + heat * 0.12, colors: HEAT_COLORS[heat] });
+      if (heat > lastHeat && heat >= 2) { setTimeout(() => { banner(HEAT[heat].lbl, `${n} quests cleared today`); Sound.heat(); }, 700); }
+    }
+    lastToday = n; lastHeat = heat;
+    $('#stat-total').textContent = questLog().length;
     $('#stat-open').textContent = doc.groups.reduce((n, g) => n + g.items.filter((i) => i.type === 'quest' && !doneNow(g, i)).length, 0);
   }
 
@@ -74,7 +120,7 @@
 
   function inline(text) {
     const esc = text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-    return esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+    return esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?![*\w])/g, '$1<i>$2</i>').replace(/`(.+?)`/g, '<code>$1</code>');
   }
   function isFeatured(g) { return /^active\b/i.test(g.title); }
   // Daily boards: "## Life [daily]". Their quests never move to Completed; a tick lasts 9 hours and
@@ -134,6 +180,8 @@
     const scroll = boards.scrollTop;
     boards.innerHTML = '';
     boards.prepend(cutLayer);
+    cutLayer.after(secretLayer);
+    drawSecrets();
     const ordered = [...doc.groups].sort((a, b) => (isFeatured(b) ? 1 : 0) - (isFeatured(a) ? 1 : 0));
     ordered.forEach((g, i) => {
       const wrap = tplGroup.content.firstElementChild.cloneNode(true);
@@ -329,28 +377,59 @@
   boards.addEventListener('pointercancel', endDrag);
 
   // Gouges live inside #boards, in content coordinates, so they scroll with the wood and the papers.
+  // They are all baked into one canvas, so even a wall with well over a thousand cuts costs one
+  // bitmap, not a thousand elements. The oldest only start to go after MAX_CUTS.
+  const MAX_CUTS = 1500;
+  const cutMarks = [];
+  const bake = document.createElement('canvas');
+  bake.className = 'cut-bake';
+  cutLayer.appendChild(bake);
+  const bctx = bake.getContext('2d');
+  function sizeBake() {
+    const w = boards.scrollWidth, h = boards.scrollHeight;
+    // the layer clips to the current content so a gouge at the edge never adds scrollbars
+    cutLayer.style.width = `${w}px`; cutLayer.style.height = `${h}px`;
+    if (bake.width >= w && bake.height >= h) return false;
+    bake.width = Math.ceil(Math.max(w, bake.width) / 256) * 256;
+    bake.height = Math.ceil(Math.max(h, bake.height) / 512) * 512;
+    return true;                                                   // resizing wiped it: redraw
+  }
+  function redrawCuts() { bctx.clearRect(0, 0, bake.width, bake.height); for (const c of cutMarks) FX.drawCutOn(bctx, c); }
+  function clearCuts() { cutMarks.length = 0; bctx.clearRect(0, 0, bake.width, bake.height); signCuts.length = 0; sctx.clearRect(0, 0, signBake.width, signBake.height); }
+  // The guild sign takes cuts too, on a canvas of its own.
+  const signCuts = [];
+  const signBake = document.createElement('canvas');
+  signBake.className = 'sign-cuts';
+  const sctx = signBake.getContext('2d');
+  function redrawSign() {
+    const hero = $('#hero');
+    if (signBake.parentNode !== hero) hero.prepend(signBake);
+    signBake.width = hero.clientWidth; signBake.height = hero.clientHeight;
+    for (const c of signCuts) FX.drawCutOn(sctx, c);
+  }
   FX.setMarkLayer((c) => {
+    const hr = $('#hero').getBoundingClientRect();
+    if (c.x >= hr.left && c.x <= hr.right && c.y >= hr.top && c.y <= hr.bottom) {
+      if (signBake.parentNode !== $('#hero')) redrawSign();
+      const m = { ...c, x: c.x - hr.left, y: c.y - hr.top, len: c.len * 0.75, w: c.w * 0.85 };
+      signCuts.push(m);
+      if (signCuts.length > 400) { signCuts.splice(0, 50); redrawSign(); } else FX.drawCutOn(sctx, m);
+      return;
+    }
     if (cutLayer.parentNode !== boards) boards.prepend(cutLayer);
     const r = boards.getBoundingClientRect();
-    const x = c.x - r.left - boards.clientLeft + boards.scrollLeft;
-    const y = c.y - r.top - boards.clientTop + boards.scrollTop;
-    const cv = document.createElement('canvas');
-    cv.className = 'cut-mark';
-    const size = FX.paintCut(cv, c);
-    cv.style.left = `${Math.round(x - size / 2)}px`;
-    cv.style.top = `${Math.round(y - size / 2)}px`;
-    // the layer clips to the current content so a gouge at the edge never adds scrollbars
-    cutLayer.style.width = `${boards.scrollWidth}px`;
-    cutLayer.style.height = `${boards.scrollHeight}px`;
-    cutLayer.appendChild(cv);
-    while (cutLayer.children.length > 80) cutLayer.firstChild.remove();
+    const m = { ...c, x: c.x - r.left - boards.clientLeft + boards.scrollLeft, y: c.y - r.top - boards.clientTop + boards.scrollTop };
+    cutMarks.push(m);
+    if (cutMarks.length > MAX_CUTS) { cutMarks.splice(0, 100); redrawCuts(); }   // fade out the oldest hundred at once
+    if (sizeBake()) redrawCuts(); else FX.drawCutOn(bctx, m);
   });
 
   // Clicking bare wood (or open water) leaves a mark: a sword cut in Tavern, a splash in Abyss.
   window.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const t = e.target;
-    if (!(t === boards || t === document.body || t.id === 'app' || t.classList.contains('canvas-spacer'))) return;
+    const onSign = !!t.closest('#hero') && !t.closest('button, .stat, .crest-wrap, .xp-bar');
+    if (!(onSign || t === boards || t === document.body || t.id === 'app' || t.classList.contains('canvas-spacer'))) return;
     Sound.unlock();
     if (settings.theme === 'abyss') { FX.splash(e.clientX, e.clientY); Sound.splash(); }
     else { FX.cut(e.clientX, e.clientY); Sound.cut(); }
@@ -524,14 +603,132 @@
   }
 
   function levelUp(level) {
-    banner('Level up!', `${level} — ${rankName(level)}`, true);
+    const ti = tierIndex(level), t = TIERS[ti], cols = tierColors(t);
+    const ascended = ti > tierIndex(level - 1);
+    banner(ascended ? `${t.name} rank!` : 'Level up!', `${level} — ${rankName(level)}`, true);
     Sound.levelUp();
-    FX.shake($('#app'), 600);
+    const app = $('#app');
+    app.classList.remove('quaking'); void app.offsetWidth; app.classList.add('quaking');
+    setTimeout(() => app.classList.remove('quaking'), 1100);
+    $$('.board-wrap').forEach((w) => { w.style.setProperty('--jolt-d', `${Math.random() * 160}ms`); w.style.setProperty('--jolt-r', `${(Math.random() * 2 - 1) * 4}deg`); w.classList.remove('jolt'); void w.offsetWidth; w.classList.add('jolt'); setTimeout(() => w.classList.remove('jolt'), 1200); });
+    const flash = $('#flash'); flash.style.setProperty('--flash', t.glow); flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+    const cr = $('#rank-crest').getBoundingClientRect();
+    const crest = $('#rank-crest'); crest.classList.remove('pulse', 'ascend'); void crest.offsetWidth; crest.classList.add(ascended ? 'ascend' : 'pulse');
     const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
-    FX.burst(cx, cy, { count: 160, power: 2, long: true });
-    setTimeout(() => FX.rain(140), 200);
-    setTimeout(() => FX.burst(cx * 0.5, cy * 0.7, { count: 60, power: 1.2 }), 350);
-    setTimeout(() => FX.burst(cx * 1.5, cy * 0.7, { count: 60, power: 1.2 }), 500);
+    FX.nova(cx, cy, cols);
+    FX.burst(cx, cy, { count: 200, power: 2.2, long: true, colors: cols });
+    FX.nova(cr.left + cr.width / 2, cr.top + cr.height / 2, cols);
+    setTimeout(() => FX.rain(ascended ? 320 : 200, cols), 200);
+    const shots = ascended ? 12 : 7;
+    for (let i = 0; i < shots; i++) {
+      setTimeout(() => {
+        const x = window.innerWidth * (0.12 + Math.random() * 0.76), y = window.innerHeight * (0.15 + Math.random() * 0.5);
+        FX.burst(x, y, { count: 70, power: 1.3, colors: cols });
+        FX.sparkle(x, y, { count: 8, spread: 60, colors: cols, big: true });
+        if (i % 2 === 0) Sound.cut && Sound.add();
+      }, 300 + i * 190);
+    }
+  }
+
+  // ---------- secrets: little treasures hidden on the wall, on a random schedule ----------
+  const SECRET_KINDS = [
+    { id: 'coin', name: 'Lost gold coin', xp: 10, w: 34 },
+    { id: 'key', name: 'Rusty old key', xp: 20, w: 18 },
+    { id: 'potion', name: 'Forgotten potion', xp: 20, w: 18 },
+    { id: 'scroll', name: 'Tiny secret scroll', xp: 25, w: 12 },
+    { id: 'gem', name: 'Glittering gem', xp: 40, w: 10 },
+    { id: 'rune', name: 'Glowing rune stone', xp: 40, w: 6 },
+    { id: 'egg', name: 'Dragon egg', xp: 100, w: 2 },
+  ];
+  const SECRET_ART = {
+    coin: '<svg viewBox="0 0 24 24"><defs><radialGradient id="sc" cx="35%" cy="30%"><stop offset="0" stop-color="#fff7c8"/><stop offset=".5" stop-color="#f2b632"/><stop offset="1" stop-color="#8a5a0a"/></radialGradient></defs><ellipse cx="12" cy="12" rx="9" ry="9" fill="url(#sc)" stroke="#5a3a06" stroke-width="1"/><ellipse cx="12" cy="12" rx="6" ry="6" fill="none" stroke="#a8740e" stroke-width="1"/><path d="M12 8v8M10 10h4M10 14h4" stroke="#7a4e06" stroke-width="1.2"/></svg>',
+    key: '<svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4" fill="none" stroke="#b08a52" stroke-width="2.2"/><path d="M11 12h10M17 12v3M20 12v2" stroke="#b08a52" stroke-width="2.2" stroke-linecap="round"/><circle cx="7" cy="12" r="4" fill="none" stroke="#5a3a16" stroke-width=".6"/></svg>',
+    potion: '<svg viewBox="0 0 24 24"><path d="M10 3h4v5l4 7a5 5 0 0 1-4.5 7h-3A5 5 0 0 1 6 15l4-7z" fill="#7a2dd6" fill-opacity=".85" stroke="#2a1040" stroke-width="1"/><path d="M8 15h8" stroke="#d9b3ff" stroke-width="1"/><circle cx="11" cy="17" r="1.2" fill="#f0ddff"/><rect x="9.5" y="2" width="5" height="2" rx="1" fill="#8a5a2a"/></svg>',
+    scroll: '<svg viewBox="0 0 24 24"><rect x="5" y="6" width="14" height="12" rx="2" fill="#f1dcae" stroke="#6b4a22" stroke-width="1"/><circle cx="5" cy="12" r="2.5" fill="#d9bf8a" stroke="#6b4a22" stroke-width="1"/><circle cx="19" cy="12" r="2.5" fill="#d9bf8a" stroke="#6b4a22" stroke-width="1"/><path d="M12 9v6" stroke="#b8321c" stroke-width="2"/></svg>',
+    gem: '<svg viewBox="0 0 24 24"><path d="M6 4h12l4 6-10 11L2 10z" fill="#38c8ff" stroke="#0a3a66" stroke-width="1"/><path d="M2 10h20M8 4l4 17M16 4l-4 17M6 4l2 6M18 4l-2 6" stroke="#bff0ff" stroke-width=".7" fill="none"/></svg>',
+    rune: '<svg viewBox="0 0 24 24"><path d="M5 18c-1-6 1-12 7-14 6 2 8 8 7 14-3 3-11 3-14 0z" fill="#6b6b72" stroke="#2c2c30" stroke-width="1"/><path d="M12 7v10M12 9l3 3M12 13l-3 3" stroke="#7df9ff" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    egg: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="13" rx="7" ry="9" fill="#c0392b" stroke="#4a0e08" stroke-width="1"/><path d="M7 10l3 2 2-3 2 3 3-2M6 15l3 1 3-2 3 2 3-1" stroke="#ffb347" stroke-width="1" fill="none"/><ellipse cx="9.5" cy="9" rx="1.5" ry="2.5" fill="#ff8a7a" opacity=".6"/></svg>',
+  };
+  const secretLayer = document.createElement('div');
+  secretLayer.className = 'secret-layer';
+  const now = () => Date.now();
+  const rndIn = (a, b) => a + Math.random() * (b - a);
+  function secretsState() {
+    if (!settings.secrets || typeof settings.secrets !== 'object') settings.secrets = {};
+    const s = settings.secrets;
+    if (!Array.isArray(s.active)) s.active = [];
+    if (!s.next) s.next = now() + rndIn(3, 12) * 60e3;           // the very first one turns up soon
+    if (!s.found) s.found = 0;
+    return s;
+  }
+  function pickKind() {
+    const total = SECRET_KINDS.reduce((n, k) => n + k.w, 0);
+    let r = Math.random() * total;
+    for (const k of SECRET_KINDS) { r -= k.w; if (r <= 0) return k; }
+    return SECRET_KINDS[0];
+  }
+  function bareSpot() {
+    const br = boards.getBoundingClientRect();
+    const W = Math.max(boards.clientWidth, 300), H = Math.max(boards.scrollHeight, boards.clientHeight);
+    const rects = $$('.board-wrap', boards).map((w) => { const r = w.getBoundingClientRect(); return { l: r.left - br.left + boards.scrollLeft - 24, t: r.top - br.top + boards.scrollTop - 24, r: r.right - br.left + boards.scrollLeft + 24, b: r.bottom - br.top + boards.scrollTop + 24 }; });
+    for (let i = 0; i < 60; i++) {
+      const x = rndIn(16, W - 44), y = rndIn(30, H - 44);
+      if (!rects.some((q) => x + 28 > q.l && x < q.r && y + 28 > q.t && y < q.b)) return { x, y };
+    }
+    return null;
+  }
+  function spawnSecret() {
+    const s = secretsState(), spot = bareSpot();
+    if (!spot) return false;
+    const k = pickKind();
+    s.active.push({ id: `${now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind: k.id, x: Math.round(spot.x), y: Math.round(spot.y), until: now() + rndIn(2, 7) * 3600e3, tilt: Math.round(rndIn(-35, 35)) });
+    saveSettings();
+    return true;
+  }
+  function tickSecrets() {
+    const s = secretsState();
+    const before = s.active.length;
+    s.active = s.active.filter((x) => x.until > now());
+    if (now() >= s.next && s.active.length < 2) {
+      if (spawnSecret()) s.next = now() + rndIn(20, 110) * 60e3;    // the next one: somewhere between 20 min and 2 h
+    }
+    if (s.active.length !== before) saveSettings();
+    drawSecrets();
+  }
+  function drawSecrets() {
+    const s = secretsState();
+    secretLayer.innerHTML = '';
+    for (const it of s.active) {
+      const k = SECRET_KINDS.find((x) => x.id === it.kind) || SECRET_KINDS[0];
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = `secret secret-${k.id}`; el.title = '';
+      el.style.left = `${it.x}px`; el.style.top = `${it.y}px`;
+      el.style.setProperty('--tilt', `${it.tilt || 0}deg`);
+      el.style.setProperty('--glint-d', `${(Math.random() * 9).toFixed(1)}s`);
+      el.innerHTML = SECRET_ART[k.id];
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('click', (e) => { e.stopPropagation(); findSecret(it, k, el); });
+      secretLayer.appendChild(el);
+    }
+  }
+  function findSecret(it, k, el) {
+    const s = secretsState();
+    s.active = s.active.filter((x) => x.id !== it.id);
+    s.found += 1;
+    saveSettings();
+    const before = levelInfo(totalXp()).level;
+    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: info.device, xp: k.xp, secret: true });
+    const after = levelInfo(totalXp()).level;
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    el.classList.add('found');
+    setTimeout(() => el.remove(), 600);
+    FX.burst(x, y, { count: 60, power: 1, colors: ['#fff4b0', '#ffd36b', '#ffffff', '#9be7ff'] });
+    FX.sparkle(x, y, { count: 14, spread: 40, colors: ['#ffffff', '#fff4b0', '#9be7ff'], big: true });
+    Sound.secret();
+    floatText(x + 20, y, `+${k.xp} XP`);
+    banner('Secret found!', `${k.name} · +${k.xp} XP · ${s.found} found so far`);
+    changed();
+    if (after > before) setTimeout(() => levelUp(after), 900);
   }
 
   // ---------- sync ----------
@@ -666,9 +863,15 @@
     setTimeout(() => el.remove(), 3000);
   }
 
+  // the wall behind the sign uses the same planks as the board wall, lined up with it
+  function alignWood() {
+    const y = boards.getBoundingClientRect().top;
+    document.documentElement.style.setProperty('--wood-y', `${Math.round(y)}px`);
+  }
+
   // ---------- theme / prefs ----------
   function applyTheme(name) {
-    if (settings.theme !== name) cutLayer.innerHTML = '';
+    if (settings.theme !== name) clearCuts();
     settings.theme = name;
     document.documentElement.setAttribute('data-theme', name);
     FX.setTheme(name);
@@ -862,6 +1065,24 @@
       else if (stamp.includes('1') && !busy && !document.hidden) $$('.quest .resets').length && render();
     }, 60 * 1000);
     window.addEventListener('focus', () => { if (Sync.ready) runSync('focus'); });
+    tickSecrets();
+    setInterval(tickSecrets, 30 * 1000);
+    setInterval(() => {
+      if (document.hidden) return;
+      const ti = tierIndex(levelInfo(totalXp()).level);
+      if (ti >= 1) {
+        const r = $('#rank-crest').getBoundingClientRect(), t = TIERS[ti];
+        FX.sparkle(r.left + r.width / 2, r.top + r.height / 2, { count: Math.min(5, ti), spread: 34, colors: tierColors(t), big: ti >= 6 });
+      }
+      const heat = Number($('#stat-today-box').dataset.heat);
+      if (heat >= 3) {
+        const r = $('#stat-today-box').getBoundingClientRect();
+        FX.embers(r.left + r.width / 2, r.top + 6, { count: heat * 2 - 3, w: r.width / 2 - 6, colors: HEAT_COLORS[heat] });
+      }
+    }, 900);
+    new ResizeObserver(() => { alignWood(); if (signBake.parentNode) redrawSign(); }).observe($('#hero'));
+    window.addEventListener('resize', alignWood);
+    alignWood();
 
     $('#btn-theme').addEventListener('click', toggleTheme);
     $('#btn-sound').addEventListener('click', () => { settings.sound = !settings.sound; applySound(); if (settings.sound) { Sound.unlock(); Sound.add(); } saveSettings(); });

@@ -31,9 +31,9 @@
 
     <section id="hero">
       <div class="hero-left">
-        <div class="rank-crest" id="rank-crest" aria-hidden="true"><span id="level-num">1</span></div>
+        <div class="crest-wrap" id="crest-wrap"><div class="rank-crest" id="rank-crest" aria-hidden="true"><span id="level-num">1</span></div></div>
         <div class="rank-text">
-          <div class="rank-title"><span id="rank-name">Tavern Squire</span></div>
+          <div class="rank-title"><span class="tier-pill" id="tier-name">Bronze</span><span id="rank-name">Tavern Squire</span></div>
           <div class="xp-row">
             <div class="xp-bar"><div class="xp-fill" id="xp-fill"></div><div class="xp-shine"></div></div>
             <div class="xp-label" id="xp-label">0 / 100 XP</div>
@@ -41,7 +41,7 @@
         </div>
       </div>
       <div class="hero-right">
-        <div class="stat"><div class="stat-num" id="stat-today">0</div><div class="stat-lbl">cleared today</div></div>
+        <div class="stat stat-today" id="stat-today-box" data-heat="0"><div class="stat-num" id="stat-today">0</div><div class="stat-lbl" id="stat-today-lbl">cleared today</div></div>
         <div class="stat"><div class="stat-num" id="stat-total">0</div><div class="stat-lbl">cleared total</div></div>
         <div class="stat"><div class="stat-num" id="stat-open">0</div><div class="stat-lbl">open quests</div></div>
       </div>
@@ -95,6 +95,7 @@
   </div>
 
   <div id="banner-layer" aria-live="polite"></div>
+  <div id="flash" aria-hidden="true"></div>
   <canvas id="fx" aria-hidden="true"></canvas>
 
   <template id="tpl-group">

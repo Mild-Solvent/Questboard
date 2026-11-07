@@ -18,7 +18,7 @@ const renderer = path.join(root, 'src', 'renderer');
 for (const f of fs.readdirSync(renderer)) {
   let text = fs.readFileSync(path.join(renderer, f), 'utf8');
   if (f === 'fonts.css') text = text.split('../../assets/fonts/').join('fonts/');
-  if (f === 'styles.css') text = text.split('../../assets/').join('');
+  if (f === 'styles.css' || f === 'sound.js') text = text.split('../../assets/').join('');
   if (f === 'index.html') {
     text = text
       .replace('<link rel="stylesheet" href="styles.css" />', '<link rel="stylesheet" href="styles.css" />\n  <link rel="stylesheet" href="web.css" />')
@@ -30,6 +30,8 @@ for (const f of fs.readdirSync(renderer)) {
 }
 for (const f of fs.readdirSync(path.join(root, 'assets', 'fonts'))) fs.copyFileSync(path.join(root, 'assets', 'fonts', f), path.join(out, 'fonts', f));
 fs.copyFileSync(path.join(root, 'assets', 'wood.png'), path.join(out, 'wood.png'));
+fs.mkdirSync(path.join(out, 'sfx', 'cut'), { recursive: true });
+for (const f of fs.readdirSync(path.join(root, 'assets', 'sfx', 'cut'))) fs.copyFileSync(path.join(root, 'assets', 'sfx', 'cut', f), path.join(out, 'sfx', 'cut', f));
 for (const f of ['shim.js', 'web.css']) fs.copyFileSync(path.join(__dirname, f), path.join(out, f));
 
 const baseUrl = opt('--base-url', '');
