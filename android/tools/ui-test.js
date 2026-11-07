@@ -344,6 +344,52 @@ async function waitHealth() {
     const qOff = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
     check('quest added offline is pushed when sync is back', qOff.includes('- [ ] Added while offline'));
 
+    // 0.6.2: pin a new paper (board): tap the blank paper, name it, its add box opens; empty papers come down after a confirm
+    if (!(await page.$eval('#sheet', (e) => e.hidden))) await page.click('#set-close');
+    await page.$eval('.new-paper', (e) => e.scrollIntoView());
+    await page.click('.new-paper');
+    await page.waitForSelector('.new-paper input.inline-edit');
+    await page.fill('.new-paper input.inline-edit', 'Garage');
+    await page.press('.new-paper input.inline-edit', 'Enter');
+    await page.waitForSelector('.board-wrap[data-group="Garage"]');
+    await sleep(400);
+    check('0.6.2: a new paper is pinned with its add box open', await page.locator('.board-wrap[data-group="Garage"] .add-input').isVisible().catch(() => false));
+    await page.fill('.board-wrap[data-group="Garage"] .add-input', 'Fix the bike');
+    await page.press('.board-wrap[data-group="Garage"] .add-input', 'Enter');
+    await sleep(300);
+    check('0.6.2: first quest lands on the new paper', (await page.locator('.board-wrap[data-group="Garage"] .quest-text:has-text("Fix the bike")').count()) === 1);
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.click('.new-paper');
+    await page.fill('.new-paper input.inline-edit', 'garage');
+    await page.press('.new-paper input.inline-edit', 'Enter');
+    await sleep(300);
+    check('0.6.2: a duplicate paper name is refused', (await page.locator('.board-wrap[data-group="garage"]').count()) === 0 && /already a paper/.test(await page.evaluate(() => (document.querySelector('.toast') || {}).textContent || '')));
+    check('0.6.2: the blank paper is usable again after a refusal', (await page.locator('.new-paper.naming').count()) === 0 && /Pin a new paper/.test(await page.textContent('.new-paper')));
+    // the settings button pins one too
+    await page.click('#btn-settings'); await page.waitForSelector('#sheet:not([hidden])');
+    await page.click('#btn-new-paper');
+    await page.waitForSelector('.new-paper input.inline-edit');
+    await page.fill('.new-paper input.inline-edit', 'Spare');
+    await page.press('.new-paper input.inline-edit', 'Enter');
+    await page.waitForSelector('.board-wrap[data-group="Spare"] .board-remove');
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.evaluate(() => { const i = document.querySelector('.board-wrap[data-group="Spare"] .add-input'); if (i) i.blur(); });
+    await sleep(300);
+    check('0.6.2: an empty paper shows a take-down ✕, a paper with quests does not', (await page.locator('.board-wrap[data-group="Garage"] .board-remove').count()) === 0 && (await page.locator('.board-wrap[data-group="Spare"] .board-remove').count()) === 1);
+    await page.click('.board-wrap[data-group="Spare"] .board-remove');
+    await page.waitForSelector('#ask:not([hidden])');
+    check('0.6.2: taking a paper down asks first', /Take this paper down/.test(await page.textContent('#ask-title')));
+    await page.click('#ask-yes');
+    await sleep(800);
+    check('0.6.2: the empty paper is gone', (await page.locator('.board-wrap[data-group="Spare"]').count()) === 0);
+    const npw = await page.evaluate(() => document.documentElement.scrollWidth);
+    check('0.6.2: new paper keeps the phone width', npw <= 390, String(npw));
+    await page.screenshot({ path: path.join(outDir, 'phone-new-paper.png') });
+    await page.evaluate(() => window.Sync.syncNow('test'));
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const qNp = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
+    check('0.6.2: the new paper syncs, the taken-down one does not', /## Garage[\s\S]*- \[ \] Fix the bike/.test(qNp) && !/## Spare/.test(qNp));
+
     // 0.6.1: secrets give no XP and do something silly; shapes are recognised from finger-sized strokes
     if (!(await page.$eval('#sheet', (e) => e.hidden))) await page.click('#set-close');
     const xpBeforeSecret = await page.textContent('#xp-label');

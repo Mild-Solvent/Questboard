@@ -272,9 +272,16 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
         done.forEach((q) => dl.appendChild(questEl(g, q)));
       } else dw.hidden = true;
 
+      if (!g.items.length) {                     // desktop 0.6.2: an empty paper can be taken down (asks first)
+        const del = document.createElement('button');
+        del.type = 'button'; del.className = 'board-remove'; del.textContent = '✕'; del.title = 'Take this empty paper down';
+        del.addEventListener('click', (e) => { e.stopPropagation(); takeDownPaper(g, wrap); });
+        $('.board-head', el).appendChild(del);
+      }
       wireAdd(el, g);
       boards.appendChild(wrap);
     });
+    boards.appendChild(blankPaper());
     boards.scrollTop = scrollTop;
     renderHero();
   }
@@ -559,6 +566,62 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       return true;
     }, onClose);
   }
+  // ---------- pin a new paper (board) to the wall (desktop 0.6.2) ----------
+  const NP_LABEL = '<b>+</b> Pin a new paper';
+  function blankPaper() {
+    const b = document.createElement('div');
+    b.className = 'new-paper';
+    b.innerHTML = `<span class="np-label">${NP_LABEL}</span>`;
+    b.addEventListener('click', (e) => { e.stopPropagation(); namePaper(b); });
+    return b;
+  }
+  function namePaper(b) {
+    if (editing || b.classList.contains('naming')) return;
+    b.classList.add('naming');
+    const label = $('.np-label', b);
+    inlineEdit(label, '', (name) => {
+      const title = name.replace(/^#+\s*/, '');
+      if (!title) return false;
+      if (doc.groups.some((x) => norm(groupKey(x)) === norm(title))) { toast('There is already a paper with that name.'); return false; }
+      doc.groups.push({ title, items: [] });
+      persist();
+      Sound.add && Sound.add();
+      api.vibrate(20);
+      setTimeout(() => {
+        const w = $$('.board-wrap', boards).find((x) => x.dataset.group === title);
+        if (!w) return;
+        w.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        w.classList.add('nailing'); setTimeout(() => w.classList.remove('nailing'), 600);
+        const r = w.getBoundingClientRect();
+        FX.burst(r.left + r.width / 2, r.top + 10, { count: 26, power: 0.6 });
+        if (prefs.theme !== 'abyss') Sound.cut && Sound.cut();
+        const add = $('.add-btn', w); if (add) add.click();
+      }, 60);
+      return true;
+    }, () => b.classList.remove('naming'));
+    const input = $('input', label);
+    if (input) input.placeholder = 'Name the paper, then Enter';
+  }
+  function newPaper() {
+    const b = $('.new-paper', boards);
+    if (!b) return;
+    b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    namePaper(b);
+  }
+  async function takeDownPaper(g, wrap) {
+    if (g.items.length) return;
+    if (!(await ask('Take this paper down?', `"${groupKey(g).slice(0, 60)}" is empty. It goes off the wall on every device.`, 'Take down', true))) return;
+    const i = doc.groups.indexOf(g);
+    if (i < 0 || g.items.length) return;
+    doc.groups.splice(i, 1);
+    const r = wrap.getBoundingClientRect();
+    FX.poof(r.left + r.width / 2, r.top + 20);
+    wrap.classList.add('leaving');
+    toast(`Took down: ${groupKey(g).slice(0, 60)}`);
+    persist();
+    setTimeout(render, 400);
+  }
+
   function editBoardTitle(g, host, shown) {
     inlineEdit(host, shown, (name) => {
       const prefix = (/^active:\s*/i.exec(g.title) || [''])[0];
@@ -1147,6 +1210,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     $('#btn-spellbook').addEventListener('click', openSpellbook);
     $('#btn-garden').addEventListener('click', openGarden);
     $('#btn-wall').addEventListener('click', cycleWall);
+    $('#btn-new-paper').addEventListener('click', () => { closeSheet(); setTimeout(newPaper, 250); });
     if (!api.native) window.__forceSecret = (kind) => { const s = secretsState(), sp = bareSpot() || { x: 120, y: 120 }; s.active = [{ id: `t${now()}`, kind, x: Math.round(sp.x), y: Math.round(sp.y), until: now() + 3600e3, tilt: 0 }]; drawSecrets(); };   // browser tests only
     tickSecrets();
     setInterval(() => { if (!editing) tickSecrets(); }, 30 * 1000);
