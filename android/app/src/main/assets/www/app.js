@@ -9,6 +9,7 @@
 
   const XP_PER_QUEST = 25;
   const RELEASES_URL = 'https://github.com/Mild-Solvent/Questboard/releases/latest';
+  const SYNC_GUIDE_URL = 'https://github.com/Mild-Solvent/Questboard/blob/main/docs/SYNC.md';
   const RANKS = {
     tavern: ['Tavern Squire', 'Road Wanderer', 'Hedge Knight', 'Guild Adventurer', 'Dragon Botherer', 'Realm Champion', 'Living Legend', 'Myth Incarnate'],
     abyss:  ['Shallow Shrimp', 'Reef Diver', 'Kelp Ranger', 'Trench Explorer', 'Kraken Wrangler', 'Tide Sovereign', 'Abyssal Legend', 'Leviathan'],
@@ -51,7 +52,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
   // ---------- XP / rank ----------
   // XP is the sum of each log entry's xp (quests 25, secrets their own); counts skip secrets (desktop 0.5.0)
-  const xp = () => progress.log.reduce((n, e) => n + (Number(e.xp) || XP_PER_QUEST), 0);
+  const xp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : Number(e.xp) || XP_PER_QUEST), 0);
   const questLog = () => progress.log.filter((e) => !e.secret);
 
   // Rank tiers: every three levels the crest turns into a better metal or gem.
@@ -237,10 +238,13 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       dbtn.type = 'button'; dbtn.className = 'daily-toggle' + (daily ? ' on' : '');
       dbtn.textContent = daily ? '↻ daily' : '↻';
       dbtn.title = daily ? 'Daily board: ticks reset 9 hours later. Tap to make it a normal board.' : 'Make this a daily board';
-      dbtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDaily(g); });
+      dbtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ask(daily ? 'Make this a normal board?' : 'Make this a daily board?', daily ? 'Ticked quests go back to normal: done means done.' : 'Ticks stay on the board and reset 9 hours after you make them.', daily ? 'Normal board' : 'Daily board').then((ok) => { if (ok) toggleDaily(g); });
+      });
       $('.board-head', el).appendChild(dbtn);
       const title = $('.board-title', el);
-      onHold(title, () => editBoardTitle(g, title, cleanTitle));
+      onHold(title, () => ask('Rename this board?', cleanTitle, 'Rename').then((ok) => { if (ok) editBoardTitle(g, title, cleanTitle); }));
 
       const ul = $('.quests', el);
       open.forEach((q) => ul.appendChild(questEl(g, q)));
@@ -320,7 +324,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   });
 
   // Tapping bare wood (or open water) leaves a mark: a sword cut in Tavern, a splash in Abyss.
-  window.addEventListener('pointerdown', (e) => {
+  window.addEventListener('click', (e) => {
     const t = e.target;
     const onSign = !!t.closest('#hero') && !t.closest('button, .stat, .crest-wrap, .xp-bar');
     if (!(onSign || t === boards || t === document.body || t.id === 'app')) return;
@@ -345,10 +349,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       }
     }
     const rune = $('.rune', li);
-    // On a phone the whole row is the tap target; the × removes.
-    li.addEventListener('click', (e) => { if (e.target.closest('.del') || li.__held || li.classList.contains('editing-row')) return; toggle(g, q, li, rune); });
+    // Only a tap on the rune completes (or undoes) a quest, like the desktop. The rune sits away from
+    // the scrolling thumb; a tap on the text or row does nothing, so scrolling never ticks anything.
+    rune.addEventListener('click', (e) => { e.stopPropagation(); if (li.__held || li.classList.contains('editing-row')) return; toggle(g, q, li, rune); });
     const textEl = $('.quest-text', li);
-    onHold(li, () => { li.classList.add('editing-row'); editQuestText(g, q, textEl, () => li.classList.remove('editing-row')); }, (e) => !e.target.closest('.del'));
+    onHold(li, () => ask('Edit this quest?', q.text, 'Edit').then((ok) => { if (!ok) return; li.classList.add('editing-row'); editQuestText(g, q, textEl, () => li.classList.remove('editing-row')); }), (e) => !e.target.closest('.del, .rune'));
     const del = document.createElement('button'); del.className = 'del'; del.title = 'Remove quest'; del.textContent = '×';
     del.addEventListener('click', (e) => { e.stopPropagation(); confirmRemove(g, q, li); });
     li.appendChild(del);
@@ -432,11 +437,33 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
   let pendingRemove = null;
   function confirmRemove(g, q, li) {
-    // first tap asks, second tap (within 3s) removes
-    if (pendingRemove && pendingRemove.q === q) { pendingRemove = null; removeQuest(g, q, li); return; }
-    pendingRemove = { q };
-    toast('Tap × again to remove this quest');
-    setTimeout(() => { if (pendingRemove && pendingRemove.q === q) pendingRemove = null; }, 3000);
+    ask('Remove this quest?', q.text, 'Remove', true).then((ok) => { if (ok) removeQuest(g, q, li); });
+  }
+
+  // ---------- confirmations: everything except a rune tap asks first (Father, 2026-11-07) ----------
+  let askOpen = null;
+  function ask(title, detail, yes, danger) {
+    if (askOpen) askOpen(false);
+    return new Promise((resolve) => {
+      const back = $('#ask-backdrop'), box = $('#ask');
+      $('#ask-title').textContent = title;
+      $('#ask-detail').innerHTML = detail ? inline(String(detail)) : '';
+      const yb = $('#ask-yes'); yb.textContent = yes || 'Yes'; yb.classList.toggle('danger', !!danger);
+      back.hidden = false; box.hidden = false;
+      const done = (v) => {
+        if (askOpen !== done) return;
+        askOpen = null; back.hidden = true; box.hidden = true;
+        yb.onclick = null; $('#ask-no').onclick = null; back.onclick = null;
+        backHandlers.delete(onBack);
+        resolve(v);
+      };
+      const onBack = () => { done(false); return true; };
+      askOpen = done;
+      backHandlers.add(onBack);
+      yb.onclick = (e) => { e.stopPropagation(); done(true); };
+      $('#ask-no').onclick = (e) => { e.stopPropagation(); done(false); };
+      back.onclick = () => done(false);
+    });
   }
   // ---------- inline editing (desktop 0.4.7: double-click; phone: press and hold) ----------
   function onHold(el, fn, accept) {
@@ -722,11 +749,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     else if (s.state === 'ok') syncBtn.classList.add('ok');
     syncBtn.title = s.message;
     const hint = $('#footer-hint');
-    if (s.state === 'unset') hint.textContent = 'Tap a quest to complete it, hold to edit. Set up sync in ⚙.';
+    if (s.state === 'unset') hint.textContent = 'Tap a rune to complete a quest, hold a quest to edit it. Sync is optional: ⚙.';
     else if (s.state === 'error') hint.textContent = `Sync error: ${s.message}`;
     else if (s.state === 'syncing') hint.textContent = 'Syncing…';
     else if (s.state === 'dirty') hint.textContent = 'Changes waiting to sync.';
-    else hint.textContent = s.at ? `Synced ${timeAgo(s.at)}.` : 'Tap a quest to complete it, hold to edit.';
+    else hint.textContent = s.at ? `Synced ${timeAgo(s.at)}.` : 'Tap a rune to complete a quest, hold a quest to edit it.';
   }
   function timeAgo(iso) {
     const d = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -859,10 +886,18 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       setSheetStatus(r.ok ? 'ok' : 'err', r.ok ? (r.changed ? 'Synced. Board updated from the server.' : 'Synced.') : `Sync failed: ${r.error}`);
       if (r.ok) { startPolling(); setTimeout(closeSheet, 900); }
     });
-    $('#set-reset-xp').addEventListener('click', () => {
-      if (!progress.log.length) { toast('XP is already 0.'); return; }
-      // tombstone every entry so other devices do not bring the XP back
-      progress = { log: [], removed: (progress.removed || []).concat(progress.log.map((e) => `${e.text}@@${e.at}`)).slice(-500) }; persist(); renderHero(); toast('XP reset. Fresh start.'); $('#set-about').textContent = `Questboard ${info.version || 'dev'} for Android · XP 0`;
+    $('#set-reset-xp').addEventListener('click', async () => {
+      if (!xp()) { toast('XP is already 0.'); return; }
+      if (!(await ask('Reset your XP?', `You are level ${levelInfo(xp()).level} with ${xp()} XP. This resets it on every device.`, 'Reset XP', true))) return;
+      if (!(await ask('Really reset?', 'Your quest history stays; only XP starts again from 0.', 'Yes, reset', true))) return;
+      // desktop 0.5.1: an XP reset is a timestamp, not a wipe; merge keeps the latest one everywhere
+      progress.resetAt = new Date().toISOString();
+      persist(); renderHero(); toast('XP reset. Fresh start.'); $('#set-about').textContent = `Questboard ${info.version || 'dev'} for Android · XP 0`;
+    });
+    $('#set-guide').addEventListener('click', () => api.openExternal(SYNC_GUIDE_URL));
+    $('#set-prompt').addEventListener('click', () => {
+      const ok = api.copyText ? api.copyText(window.SYNC_AGENT_PROMPT || '') : false;
+      toast(ok ? 'Setup prompt copied. Paste it to your AI agent.' : 'Could not copy; the prompt is in the guide.');
     });
     $('#set-releases').addEventListener('click', () => api.openExternal(RELEASES_URL));
 

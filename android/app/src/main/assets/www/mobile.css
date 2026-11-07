@@ -142,3 +142,18 @@ button, a, input, summary, .rune { cursor: auto; }
 .inline-edit { font-size: max(16px, 1em); }
 .board-title .inline-edit { min-width: 0; }
 .quest.editing-row { background: rgba(255,255,255,.12); }
+
+/* ---------- confirmations ---------- */
+#ask-backdrop { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.5); }
+#ask { position: fixed; z-index: 71; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(340px, calc(100vw - 32px)); padding: 18px 18px 14px; border-radius: 16px; color: var(--text); font-family: var(--font-body); }
+#ask[hidden], #ask-backdrop[hidden] { display: none; }
+#ask h2 { margin: 0 0 6px; font-size: 18px; }
+#ask p { margin: 0 0 14px; font-size: 15px; color: var(--text-dim); word-break: break-word; }
+#ask .sheet-row { margin: 0; }
+#ask .btn.danger { background: rgba(200,50,40,.75); border-color: rgba(255,140,120,.6); color: #fff; }
+:root[data-theme="tavern"] #ask { background: linear-gradient(180deg, #3b2112, #22120a); box-shadow: 0 10px 40px rgba(0,0,0,.6), inset 0 0 0 2px #6b3f1e; }
+:root[data-theme="abyss"] #ask { background: linear-gradient(180deg, rgba(14,70,105,.98), rgba(4,24,43,.98)); border: 1.5px solid rgba(255,255,255,.7); box-shadow: 0 0 24px rgba(60,240,255,.25); }
+
+/* the rune is the only thing that completes a quest: give it a finger-sized hit area */
+.rune { position: relative; }
+.rune::before { content: ''; position: absolute; inset: -11px -12px -11px -12px; }

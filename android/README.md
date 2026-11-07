@@ -26,9 +26,15 @@ sheet has a "Check for updates" button that opens the releases page.
 
 ## Use
 
-- Tap a quest (anywhere on its row) to complete it: burst, chime, haptic, XP.
-  Tap a completed quest under *Completed* to undo.
-- `+ new quest` adds one to that board. Tap × twice to remove a quest.
+- Tap a quest's rune (the box on the left) to complete it: burst, chime, haptic,
+  XP. Tap the rune of a completed quest under *Completed* to undo. Tapping the
+  text does nothing, so scrolling never ticks anything.
+- Hold a quest or a board title to edit it. Removing (×), editing, the daily
+  switch (↻) and Reset XP all ask before they act.
+- `+ new quest` adds one to that board.
+- Settings (⚙) → Sync has "How to set up your own sync" (docs/SYNC.md) and
+  "Copy setup prompt" (the text in docs/sync-agent-prompt.txt, for your own AI
+  agent to set up a server).
 - Title bar: theme toggle (Tavern / Abyss), sound, sync now, settings.
 - The board syncs on open, when you come back to the app, every 90 s while it
   is open, and about 2 s after every change. Edits made on the server (for

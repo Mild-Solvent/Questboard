@@ -80,5 +80,9 @@
     listeners.insets.forEach((f) => f({ top, bottom, left, right }));
   };
 
-  window.questboard = { native: !!host, readFile, writeFile, getPrefs, setPrefs, info, http, openExternal, vibrate, on };
+  function copyText(text) {
+    if (host && host.copyText) { try { return !!host.copyText(String(text)); } catch { return false; } }
+    try { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); window.__qbCopied = text; return ok || true; } catch { return false; }
+  }
+  window.questboard = { native: !!host, readFile, writeFile, getPrefs, setPrefs, info, http, openExternal, vibrate, copyText, on };
 })();

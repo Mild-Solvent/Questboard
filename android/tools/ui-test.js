@@ -97,7 +97,12 @@ async function waitHealth() {
 
     // complete a quest by tapping its row
     const firstText = await page.textContent('.quest .quest-text');
-    await page.click('.quest');
+    // a tap on the quest text does nothing: only the rune completes (scroll safety, 0.5.1)
+    await page.click('.quest .quest-text');
+    await sleep(900);
+    check('tap on quest text does not complete it', (await page.textContent('#xp-label')) === '0 / 100 XP' && (await page.locator('#ask:not([hidden])').count()) === 0, await page.textContent('#xp-label'));
+    // the rune completes instantly
+    await page.click('.quest .rune');
     await sleep(300);
     check('XP after one quest', (await page.textContent('#xp-label')) === '25 / 100 XP', await page.textContent('#xp-label'));
     await sleep(1500);
@@ -163,7 +168,7 @@ async function waitHealth() {
     const lifeTitle = await page.$eval('.board.daily .board-title', (e) => e.textContent.trim());
     check('daily: board title hides the [daily] tag', lifeTitle === 'Life', lifeTitle);
     const before = await page.$eval('.board.daily .board-count', (e) => e.textContent);
-    await page.click('.board.daily .quest:has-text("Buy milk")');
+    await page.click('.board.daily .quest:has-text("Buy milk") .rune');
     await sleep(1600);
     const after = await page.$eval('.board.daily .board-count', (e) => e.textContent);
     const stays = await page.$$eval('.board.daily .quests:not(.done-list) .quest.done .quest-text', (els) => els.map((e) => e.textContent));
@@ -174,7 +179,7 @@ async function waitHealth() {
     const p3 = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text());
     check('daily: QUESTS.md keeps it open', q3.includes('## Life [daily]') && q3.includes('- [ ] Buy milk') && !q3.includes('- [x] Buy milk'));
     check('daily: progress.json has the tick', p3.log.some((e) => e.text === 'Buy milk'));
-    await page.click('.board.daily .quest:has-text("Buy milk")');
+    await page.click('.board.daily .quest:has-text("Buy milk") .rune');
     await sleep(600);
     const untick = await page.$$eval('.board.daily .quest.done .quest-text', (els) => els.map((e) => e.textContent));
     check('daily: untick clears it', !untick.some((t) => t.startsWith('Buy milk')), untick.join(' | '));
@@ -187,9 +192,11 @@ async function waitHealth() {
     const hold = async (sel) => {
       const b = await page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return { x: r.left + Math.min(60, r.width / 2), y: r.top + r.height / 2 }; });
       await page.mouse.move(b.x, b.y); await page.mouse.down(); await sleep(700); await page.mouse.up();
+      await page.waitForSelector('#ask:not([hidden])', { timeout: 2000 });   // editing asks first
+      await page.click('#ask-yes');
       await page.waitForSelector('.inline-edit', { timeout: 2000 });
     };
-    await page.click('.board.daily .quest:has-text("Clean room")');
+    await page.click('.board.daily .quest:has-text("Clean room") .rune');
     await sleep(1600);
     await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
     await hold('.board.daily .quest:has-text("Clean room")');
@@ -244,6 +251,30 @@ async function waitHealth() {
     // a tap on bare wood is baked into one canvas inside #boards
     const bakeHas = await page.$eval('#boards .cut-bake', (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; });
     check('0.5.0: sword cut baked into the wall canvas', bakeHas);
+
+    // remove asks; Cancel keeps it
+    await page.click('.board.daily .quest:has-text("Buy milk") .del');
+    await page.waitForSelector('#ask:not([hidden])', { timeout: 2000 });
+    check('remove asks first', /Remove this quest/.test(await page.textContent('#ask-title')));
+    await page.click('#ask-no');
+    check('cancel keeps the quest', (await page.locator('.board.daily .quest:has-text("Buy milk")').count()) === 1);
+
+    // XP reset (0.5.1): asks twice, sets resetAt, keeps the history, syncs
+    const logBefore = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text()).log.length;
+    await page.click('#btn-settings');
+    await page.waitForSelector('#sheet:not([hidden])');
+    await page.click('#set-reset-xp'); await page.waitForSelector('#ask:not([hidden])'); await page.click('#ask-yes');
+    await sleep(150); await page.waitForSelector('#ask:not([hidden])'); await page.click('#ask-yes');
+    await sleep(400);
+    check('XP reset shows level 1, 0 XP', (await page.textContent('#xp-label')) === '0 / 100 XP' && (await page.textContent('#level-num')) === '1', await page.textContent('#xp-label'));
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const p8 = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text());
+    check('XP reset is a resetAt on the server, history kept', !!p8.resetAt && p8.log.length === logBefore, `${p8.resetAt} ${p8.log.length}/${logBefore}`);
+    await page.click('#set-prompt');
+    const copied = await page.evaluate(() => window.__qbCopied || '');
+    check('copy setup prompt puts the agent prompt on the clipboard', /Questboard sync server/.test(copied), copied.slice(0, 60));
+    await page.click('#set-close');
+    await sleep(300);
 
     // back button closes the sheet
     await page.click('#btn-settings');

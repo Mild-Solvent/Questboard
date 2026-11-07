@@ -47,7 +47,7 @@
     <main id="boards"></main>
 
     <footer id="footer">
-      <span id="footer-hint">Tap a quest to complete it.</span>
+      <span id="footer-hint">Tap a rune to complete a quest.</span>
       <span id="version"></span>
     </footer>
   </div>
@@ -64,6 +64,10 @@
     <label class="field"><span>Token</span><span class="field-row"><input id="set-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="paste the token" /><button type="button" class="mini" id="set-token-eye">show</button></span></label>
     <label class="field"><span>This device</span><input id="set-device" type="text" maxlength="40" autocomplete="off" placeholder="phone" /></label>
     <div class="sheet-row">
+      <button type="button" class="btn" id="set-guide">How to set up your own sync</button>
+      <button type="button" class="btn" id="set-prompt">Copy setup prompt</button>
+    </div>
+    <div class="sheet-row">
       <button type="button" class="btn" id="set-test">Test connection</button>
       <button type="button" class="btn primary" id="set-save">Save &amp; sync</button>
     </div>
@@ -77,6 +81,10 @@
     <p class="sheet-help" id="set-about"></p>
     <button type="button" class="btn ghost" id="set-close">Close</button>
   </section>
+
+  <!-- Confirmation: every touch action except a rune tap asks first -->
+  <div id="ask-backdrop" hidden></div>
+  <section id="ask" hidden role="dialog" aria-modal="true"><h2 id="ask-title"></h2><p id="ask-detail"></p><div class="sheet-row"><button type="button" class="btn" id="ask-no">Cancel</button><button type="button" class="btn primary" id="ask-yes">Yes</button></div></section>
 
   <div id="banner-layer" aria-live="polite"></div>
   <div id="flash" aria-hidden="true"></div>
@@ -116,6 +124,7 @@
   <script src="bridge.js"></script>
   <script src="merge.js"></script>
   <script src="sync.js"></script>
+  <script src="sync-prompt.js"></script>
   <script src="fx.js"></script>
   <script src="sound.js"></script>
   <script src="app.js"></script>

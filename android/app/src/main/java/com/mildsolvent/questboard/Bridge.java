@@ -104,6 +104,17 @@ public class Bridge {
         } catch (Exception ignored) { }
     }
 
+    /** Puts text on the clipboard (the "Copy setup prompt" button). */
+    @JavascriptInterface
+    public boolean copyText(String text) {
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm == null) return false;
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("Questboard sync setup prompt", text == null ? "" : text));
+            return true;
+        } catch (Exception e) { return false; }
+    }
+
     @JavascriptInterface
     public void vibrate(int ms) {
         try {
