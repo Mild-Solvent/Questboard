@@ -246,9 +246,16 @@
       const dw = $('.done-wrap', el);
       if (done.length) { $('.done-count', el).textContent = `(${done.length})`; done.forEach((q) => $('.done-list', el).appendChild(questEl(g, q))); }
       else dw.hidden = true;
+      if (!g.items.length) {
+        const del = document.createElement('button');
+        del.type = 'button'; del.className = 'board-remove'; del.textContent = '✕'; del.title = 'Take this empty paper down';
+        del.addEventListener('click', (e) => { e.stopPropagation(); takeDownPaper(g, wrap); });
+        $('.board-head', el).appendChild(del);
+      }
       wireAdd(el, g);
       boards.appendChild(wrap);
     });
+    boards.appendChild(blankPaper());
     boards.scrollTop = scroll;
     applyLayout();
     renderHero();
@@ -596,6 +603,64 @@
       return true;
     });
   }
+  // ---------- pin a new paper to the board ----------
+  function blankPaper() {
+    const b = document.createElement('div');
+    b.className = 'new-paper';
+    b.innerHTML = '<span class="np-label"><b>+</b> Pin a new paper</span>';
+    b.title = 'Add a new board for a new group of quests';
+    b.addEventListener('click', (e) => { e.stopPropagation(); namePaper(b); });
+    return b;
+  }
+  function namePaper(b) {
+    if (editing || b.classList.contains('naming')) return;
+    b.classList.add('naming');
+    const label = $('.np-label', b);
+    label.textContent = '';
+    inlineEdit(label, '', (name) => {
+      const title = name.replace(/^#+\s*/, '');
+      if (!title) return false;
+      if (doc.groups.some((x) => norm(groupKey(x)) === norm(title))) { toast('There is already a paper with that name.'); return false; }
+      doc.groups.push({ title, items: [] });
+      changed();
+      Sound.add();
+      setTimeout(() => {
+        const w = $$('.board-wrap', boards).find((x) => x.dataset.group === groupKey(doc.groups[doc.groups.length - 1]));
+        if (!w) return;
+        w.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        w.classList.add('nailing'); setTimeout(() => w.classList.remove('nailing'), 600);
+        const r = w.getBoundingClientRect();
+        FX.burst(r.left + r.width / 2, r.top + 10, { count: 26, power: 0.6 });
+        if (settings.theme === 'tavern') Sound.cut();
+        const add = $('.add-btn', w); if (add) add.click();
+      }, 30);
+      return true;
+    });
+    const input = $('input', label);
+    if (input) input.placeholder = 'Name the paper, then Enter';
+    // inlineEdit puts the old label back on cancel; keep the ghost usable again
+    const obs = new MutationObserver(() => { if (!$('input', label)) { b.classList.remove('naming'); label.innerHTML = '<b>+</b> Pin a new paper'; obs.disconnect(); } });
+    obs.observe(label, { childList: true });
+  }
+  function newPaper() {
+    if (settings.layout.mode === 'free') { settings.layout.mode = 'grid'; saveSettings(); applyLayout(); }
+    const b = $('.new-paper', boards);
+    if (!b) return;
+    b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    namePaper(b);
+  }
+  function takeDownPaper(g, wrap) {
+    const i = doc.groups.indexOf(g);
+    if (i < 0 || g.items.length) return;
+    doc.groups.splice(i, 1);
+    const r = wrap.getBoundingClientRect();
+    FX.poof(r.left + r.width / 2, r.top + 20);
+    wrap.classList.add('leaving');
+    toast(`Took down: ${groupKey(g).slice(0, 60)}`);
+    changed();
+    setTimeout(render, 400);
+  }
+
   function editBoardTitle(g, host, shown) {
     inlineEdit(host, shown, (name) => {
       const prefix = (/^active:\s*/i.exec(g.title) || [''])[0];
@@ -1477,6 +1542,7 @@
 
     $('#btn-theme').addEventListener('click', toggleTheme);
     $('#btn-wall').addEventListener('click', cycleWall);
+    $('#btn-new-paper').addEventListener('click', newPaper);
     $('#btn-sound').addEventListener('click', () => { settings.sound = !settings.sound; applySound(); if (settings.sound) { Sound.unlock(); Sound.add(); } saveSettings(); });
     $('#btn-autostart').addEventListener('click', async () => {
       const a = await api.getAutostart();

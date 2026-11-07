@@ -28,7 +28,7 @@ input { user-select: text; }
 #fx { z-index: 50; }
 
 #app {
-  position: relative; z-index: 1; height: 100%;
+  position: relative; z-index: 1; height: 100%; grid-template-columns: minmax(0, 1fr);
   display: grid; grid-template-rows: 42px auto 1fr 30px;
 }
 #app.shaking { animation: shake .45s cubic-bezier(.36,.07,.19,.97) both; }
@@ -180,7 +180,8 @@ input { user-select: text; }
 .empty { font-size: 13px; color: var(--ink-soft); font-style: italic; padding: 6px 0 2px 34px; }
 
 /* ---------- Footer ---------- */
-#footer { display: flex; align-items: center; gap: 14px; padding: 0 16px; font-size: 11px; color: var(--text-dim); background: rgba(0,0,0,.35); }
+#footer { display: flex; align-items: center; gap: 14px; padding: 0 16px; font-size: 11px; color: var(--text-dim); background: rgba(0,0,0,.35); min-width: 0; overflow: hidden; }
+#footer .link-btn { flex-shrink: 0; white-space: nowrap; }
 #footer-hint { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .link-btn { background: none; border: none; color: var(--text-dim); font: 11px var(--font-body); text-decoration: underline dotted; padding: 0; }
 .link-btn:hover { color: var(--accent); }
@@ -843,3 +844,21 @@ html.fx-disco #app { animation: disco .5s steps(1) infinite; }
 @keyframes float-heart { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 15% { opacity: 1; transform: translate(0, -10px) scale(1); } 100% { opacity: 0; transform: translate(var(--dx, 0), -220px) scale(1.2); } }
 html.vortex #boards { animation: vortex 1.5s cubic-bezier(.5,0,.3,1); transform-origin: var(--vx, 50%) var(--vy, 50%); }
 @keyframes vortex { 0% { transform: rotate(0) scale(1); } 45% { transform: rotate(7deg) scale(.96); } 70% { transform: rotate(-3deg) scale(1.01); } 100% { transform: rotate(0) scale(1); } }
+
+/* ---------- pin a new paper ---------- */
+.new-paper {
+  position: relative; z-index: 1; min-height: 120px; display: grid; place-items: center; cursor: pointer;
+  border: 2px dashed rgba(255, 230, 190, .35); border-radius: 6px; color: rgba(255, 236, 205, .7);
+  background: rgba(20, 9, 3, .18); transition: background .2s, border-color .2s, color .2s, transform .2s;
+  font: 600 17px var(--font-head); letter-spacing: .5px;
+}
+.new-paper:hover { background: rgba(255, 230, 190, .10); border-color: rgba(255, 230, 190, .7); color: #fff3dc; transform: rotate(-.6deg) scale(1.01); }
+.new-paper .np-label b { font-size: 26px; margin-right: 6px; vertical-align: -3px; }
+.new-paper.naming { cursor: default; border-style: solid; background: rgba(233, 215, 174, .9); color: var(--ink); }
+.new-paper .inline-edit { width: min(320px, 80%); font: 600 18px var(--font-head); text-align: center; }
+#boards.free .new-paper { display: none; }
+:root[data-theme="abyss"] .new-paper { border-color: rgba(140, 235, 255, .4); color: rgba(200, 245, 255, .8); background: rgba(10, 55, 95, .25); border-radius: 12px; }
+:root[data-theme="abyss"] .new-paper:hover { border-color: rgba(140, 235, 255, .8); background: rgba(40, 120, 175, .3); }
+:root[data-theme="abyss"] .new-paper.naming { background: rgba(10, 55, 95, .7); color: var(--text); }
+.board-remove { border: 0; background: transparent; color: inherit; opacity: .55; cursor: pointer; font-size: 13px; padding: 2px 6px; }
+.board-remove:hover { opacity: 1; color: #b8321c; }
