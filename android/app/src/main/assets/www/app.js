@@ -54,7 +54,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
   // ---------- XP / rank ----------
   // XP is the sum of each log entry's xp (quests 25, secrets their own); counts skip secrets (desktop 0.5.0)
-  const xp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : Number(e.xp) || XP_PER_QUEST), 0);
+  const entryXp = (e) => (e.secret ? 0 : Number(e.xp) || XP_PER_QUEST);   // desktop 0.6.1: secrets are just for fun, no XP
+  const xp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : entryXp(e)), 0);
   const questLog = () => progress.log.filter((e) => !e.secret && !e.bonus);
 
   // Rank tiers: every three levels the crest turns into a better metal or gem.
@@ -616,16 +617,16 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
   // ---------- secrets: little treasures hidden on the wall, on a random schedule (per device) ----------
   const SECRET_KINDS = [
-    { id: 'coin', name: 'Lost gold coin', xp: 10, w: 34 },
-    { id: 'key', name: 'Rusty old key', xp: 20, w: 18 },
-    { id: 'potion', name: 'Forgotten potion', xp: 20, w: 18 },
-    { id: 'scroll', name: 'Tiny secret scroll', xp: 25, w: 12 },
-    { id: 'gem', name: 'Glittering gem', xp: 40, w: 10 },
-    { id: 'rune', name: 'Glowing rune stone', xp: 40, w: 6 },
-    { id: 'egg', name: 'Dragon egg', xp: 100, w: 2 },
-    { id: 'gatekey', name: 'Garden gate key', xp: 30, w: 9, when: () => !gardenOpen() },
-    { id: 'spellscroll', name: 'Spell scroll: Enchant', xp: 30, w: 7, when: () => !learned('enchant') },
-    ...Object.keys(Magic.FAMILIARS).filter((f) => f !== 'dragon').map((f) => ({ id: `fam-${f}`, fam: f, name: Magic.FAMILIARS[f].name, xp: 25, w: 4, when: () => !familiars().includes(f) })),
+    { id: 'coin', name: 'Lost gold coin', w: 34 },
+    { id: 'key', name: 'Rusty old key', w: 18 },
+    { id: 'potion', name: 'Forgotten potion', w: 18 },
+    { id: 'scroll', name: 'Tiny secret scroll', w: 12 },
+    { id: 'gem', name: 'Glittering gem', w: 10 },
+    { id: 'rune', name: 'Glowing rune stone', w: 6 },
+    { id: 'egg', name: 'Dragon egg', w: 2 },
+    { id: 'gatekey', name: 'Garden gate key', w: 9, when: () => !gardenOpen() },
+    { id: 'spellscroll', name: 'Spell scroll: Enchant', w: 7, when: () => !learned('enchant') },
+    ...Object.keys(Magic.FAMILIARS).filter((f) => f !== 'dragon').map((f) => ({ id: `fam-${f}`, fam: f, name: Magic.FAMILIARS[f].name, w: 4, when: () => !familiars().includes(f) })),
   ];
   const SECRET_ART = {
     coin: '<svg viewBox="0 0 24 24"><defs><radialGradient id="sc" cx="35%" cy="30%"><stop offset="0" stop-color="#fff7c8"/><stop offset=".5" stop-color="#f2b632"/><stop offset="1" stop-color="#8a5a0a"/></radialGradient></defs><ellipse cx="12" cy="12" rx="9" ry="9" fill="url(#sc)" stroke="#5a3a06" stroke-width="1"/><ellipse cx="12" cy="12" rx="6" ry="6" fill="none" stroke="#a8740e" stroke-width="1"/><path d="M12 8v8M10 10h4M10 14h4" stroke="#7a4e06" stroke-width="1.2"/></svg>',
@@ -642,7 +643,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     if (!prefs.secrets || typeof prefs.secrets !== 'object') prefs.secrets = {};
     const s = prefs.secrets;
     if (!Array.isArray(s.active)) s.active = [];
-    if (!s.next) s.next = now() + rndIn(3, 12) * 60e3;           // the very first one turns up soon
+    if (s.v !== 2) { s.v = 2; s.next = now() + rndIn(2, 8) * 3600e3; s.active = s.active.slice(0, 1); }   // 0.6.1: easter eggs, rare
+    if (!s.next) s.next = now() + rndIn(2, 8) * 3600e3;
     if (!s.found) s.found = 0;
     return s;
   }
@@ -663,11 +665,23 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     }
     return null;
   }
+  function tuckedSpot() {
+    const br = boards.getBoundingClientRect();
+    const wraps = $$('.board-wrap', boards);
+    if (!wraps.length) return null;
+    const r = wraps[(Math.random() * wraps.length) | 0].getBoundingClientRect();
+    const L = r.left - br.left + boards.scrollLeft, T = r.top - br.top + boards.scrollTop, R = L + r.width, B = T + r.height;
+    const side = (Math.random() * 4) | 0, peek = 9;
+    if (side === 0) return { x: rndIn(L + 30, R - 50), y: B - 18 + peek, under: true };
+    if (side === 1) return { x: R - 18 + peek, y: rndIn(T + 40, B - 40), under: true };
+    if (side === 2) return { x: L - peek, y: rndIn(T + 40, B - 40), under: true };
+    return { x: rndIn(L + 30, R - 50), y: T - peek, under: true };
+  }
   function spawnSecret() {
-    const s = secretsState(), spot = bareSpot();
+    const s = secretsState(), spot = (Math.random() < 0.7 && tuckedSpot()) || bareSpot();
     if (!spot) return false;
     const k = pickKind();
-    s.active.push({ id: `${now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind: k.id, x: Math.round(spot.x), y: Math.round(spot.y), until: now() + rndIn(2, 7) * 3600e3, tilt: Math.round(rndIn(-35, 35)) });
+    s.active.push({ id: `${now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind: k.id, x: Math.round(spot.x), y: Math.round(spot.y), under: !!spot.under, until: now() + rndIn(4, 12) * 3600e3, tilt: Math.round(rndIn(-35, 35)) });
     savePrefs();
     return true;
   }
@@ -675,8 +689,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const s = secretsState();
     const before = s.active.length;
     s.active = s.active.filter((x) => x.until > now());
-    if (now() >= s.next && s.active.length < 2) {
-      if (spawnSecret()) s.next = now() + rndIn(20, 110) * 60e3;    // the next one: somewhere between 20 min and 2 h
+    if (now() >= s.next && s.active.length < 1) {
+      if (spawnSecret()) s.next = now() + rndIn(8, 36) * 3600e3;    // the next one: somewhere between 8 h and a day and a half
     }
     if (s.active.length !== before) savePrefs();
     drawSecrets();
@@ -693,6 +707,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       el.style.setProperty('--glint-d', `${(Math.random() * 9).toFixed(1)}s`);
       el.innerHTML = k.fam ? `<span class="peek">${Magic.FAMILIARS[k.fam].e}</span>` : (SECRET_ART[k.id] || SECRET_ART.scroll);
       if (k.fam) el.classList.add('secret-fam');
+      if (it.under) el.classList.add('tucked');
       el.addEventListener('pointerdown', (e) => e.stopPropagation());
       el.addEventListener('click', (e) => { e.stopPropagation(); findSecret(it, k, el); });
       secretLayer.appendChild(el);
@@ -703,9 +718,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     s.active = s.active.filter((x) => x.id !== it.id);
     s.found += 1;
     savePrefs();
-    const before = levelInfo(xp()).level;
-    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: Sync.device(), xp: k.xp, secret: true, kind: k.id });
-    const after = levelInfo(xp()).level;
+    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: Sync.device(), xp: 0, secret: true, kind: k.id });
     const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
     el.classList.add('found');
     setTimeout(() => el.remove(), 600);
@@ -713,24 +726,125 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     FX.sparkle(x, y, { count: 14, spread: 40, colors: ['#ffffff', '#fff4b0', '#9be7ff'], big: true });
     Sound.secret && Sound.secret();
     api.vibrate(50);
-    floatText(x + 20, y, `+${k.xp} XP`);
-    if (k.fam) banner(`${Magic.FAMILIARS[k.fam].name} joins you!`, gardenOpen() ? 'It moved into your garden' : 'It waits by a garden gate you have not found yet');
-    else if (k.id === 'egg') banner('A dragon egg!', 'It hatched: a dragonling lives in your garden now');
-    else if (k.id === 'gatekey') banner('The garden gate key!', 'A secret garden opens: ⚙ → Magic → Garden');
-    else if (k.id === 'spellscroll') banner('You learned Enchant!', 'Tap ✧ on a quest to enchant it');
-    else banner('Secret found!', `${k.name} · +${k.xp} XP · ${s.found} found so far`);
+    floatText(x + 20, y, k.name);
+    secretFun(k, x, y, s);
     refreshMagicUi();
     persist(); renderHero();
-    if (after > before) setTimeout(() => levelUp(after), 900);
+  }
+
+  // What each secret does (desktop 0.6.1): nothing useful, all of it silly. Secrets never give XP.
+  const FORTUNES = [
+    'The cat has been the guild master all along.',
+    'A quest left alone long enough becomes a monster. Like laundry.',
+    'You will find a coin. It will buy nothing.',
+    'The tavern keeper waters the ale. Everyone knows.',
+    'Somewhere a dragon is also procrastinating.',
+    'The walls have ears. Also axe marks. Mostly axe marks.',
+    'Your sword is fine. The wall is the one suffering.',
+    'If you clear every quest, the board applauds. Nobody has seen it.',
+    'This scroll is blank on the back. The scribe got lazy.',
+    'Drink the potion. What could go wrong?',
+  ];
+  const POTIONS = [
+    ['Shrinking potion', 'Everything is a bit smaller for a while', 'fx-tiny'],
+    ['Wobble brew', 'The room will not stay still', 'fx-wobble'],
+    ['Rainbow tonic', 'Colours have opinions now', 'fx-rainbow'],
+    ['Mirror draught', 'Left is right. For twenty seconds', 'fx-mirror'],
+    ['Giant draught', 'Your boards had a growth spurt', 'fx-giant'],
+  ];
+  function funLayer() {
+    let l = document.getElementById('fun-layer');
+    if (!l) { l = document.createElement('div'); l.id = 'fun-layer'; document.body.appendChild(l); }
+    return l;
+  }
+  function rainOf(chars, n, ms = 3200) {
+    const l = funLayer();
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement('span'); c.className = 'fun-fall';
+      c.textContent = chars[(Math.random() * chars.length) | 0];
+      c.style.left = `${Math.random() * 100}%`; c.style.animationDuration = `${rndIn(1.6, 3).toFixed(2)}s`; c.style.animationDelay = `${rndIn(0, 1.2).toFixed(2)}s`;
+      c.style.setProperty('--spin', `${rndIn(-540, 540) | 0}deg`); c.style.fontSize = `${rndIn(18, 34) | 0}px`;
+      l.appendChild(c); setTimeout(() => c.remove(), ms + 1500);
+    }
+  }
+  function walkAcross(ch, title) {
+    const w = document.createElement('span'); w.className = 'fun-walk'; w.textContent = ch; w.title = title || '';
+    if (Math.random() < 0.5) w.classList.add('rtl');
+    funLayer().appendChild(w); setTimeout(() => w.remove(), 9000);
+  }
+  let potionTimer = null;
+  function potionEffect(cls, ms) {
+    const html = document.documentElement;
+    ['fx-tiny', 'fx-wobble', 'fx-rainbow', 'fx-mirror', 'fx-giant', 'fx-disco'].forEach((c) => html.classList.remove(c));
+    html.classList.add(cls);
+    clearTimeout(potionTimer); potionTimer = setTimeout(() => html.classList.remove(cls), ms);
+  }
+  function secretFun(k, x, y, s) {
+    const count = (id) => progress.log.filter((e) => e.secret && e.kind === id).length;
+    if (k.fam) {
+      walkAcross(Magic.FAMILIARS[k.fam].e, Magic.FAMILIARS[k.fam].name);
+      banner(`${Magic.FAMILIARS[k.fam].name} joins you!`, gardenOpen() ? 'It moved into your garden' : 'It waits by a garden gate you have not found yet');
+      return;
+    }
+    switch (k.id) {
+      case 'coin': {
+        rainOf(['🪙'], 30);
+        for (let i = 0; i < 6; i++) setTimeout(() => Sound.add && Sound.add(), 120 * i);
+        const n = count('coin');
+        banner(n > 1 ? `${n} gold coins!` : 'A gold coin!', 'They buy absolutely nothing');
+        break;
+      }
+      case 'key':
+        $$('.quest .rune').forEach((rn, i) => setTimeout(() => { rn.classList.remove('rattle'); void rn.offsetWidth; rn.classList.add('rattle'); }, i * 45));
+        banner('A rusty old key', 'It fits nothing. The runes did a little dance anyway');
+        break;
+      case 'potion': {
+        const p = POTIONS[(Math.random() * POTIONS.length) | 0];
+        potionEffect(p[2], p[2] === 'fx-mirror' ? 20000 : 30000);
+        banner(p[0], p[1]);
+        break;
+      }
+      case 'scroll':
+        banner('A tiny scroll says:', FORTUNES[(Math.random() * FORTUNES.length) | 0], true);
+        break;
+      case 'gem':
+        rainOf(['✨', '💎', '✦', '⭐'], 36); potionEffect('fx-disco', 9000);
+        banner('A glittering gem', 'Disco in the tavern');
+        break;
+      case 'rune': {
+        const pick = ['bolt', 'meteor', 'circle', 'rain', 'starfall', 'hearts'][(Math.random() * 6) | 0];
+        const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+        if (pick === 'bolt') { Magic.bolt(x, y); Sound.thunder && Sound.thunder(); }
+        if (pick === 'meteor') Magic.meteor(cx, cy, () => { Sound.boom && Sound.boom(); FX.shake($('#app'), 600); api.vibrate(120); });
+        if (pick === 'circle') { Magic.circle(x, y, 220, '#7df9ff'); Sound.cast && Sound.cast(); }
+        if (pick === 'rain') Magic.rainfall(8000);
+        if (pick === 'starfall') { Magic.starfall(); Sound.cast && Sound.cast(); }
+        if (pick === 'hearts') { Magic.hearts(x, y); Sound.cast && Sound.cast(); }
+        banner('A glowing rune stone', 'It cast a spell all by itself');
+        break;
+      }
+      case 'egg':
+        walkAcross('🐉', 'Dragonling');
+        banner('A dragon egg!', 'It hatched: a dragonling lives in your garden now');
+        break;
+      case 'gatekey': banner('The garden gate key!', 'A secret garden opens: ⚙ → Magic → Garden'); break;
+      case 'spellscroll': banner('You learned Enchant!', 'Tap ✧ on a quest to enchant it'); break;
+      default: banner('Secret found!', `${k.name} · ${s.found} found so far`);
+    }
   }
 
   // ---------- magic (desktop 0.6.0) ----------
   const SPELLS = [
     { id: 'ember', name: 'Ember trail', level: 5, how: 'Passive: your finger leaves a trail of fire.', toggle: true },
-    { id: 'circle', name: 'Arcane circle', level: 5, how: 'Hold still on bare wall, then draw a circle.' },
-    { id: 'lightning', name: 'Lightning', level: 10, how: 'Hold, then draw a zigzag. Also strikes every quest you clear.', toggle: true },
-    { id: 'rain', name: 'Rainfall', level: 15, how: 'Hold, then swipe straight down.' },
-    { id: 'meteor', name: 'Meteor', level: 20, how: 'Hold, then slash diagonally.' },
+    { id: 'circle', name: 'Arcane circle', level: 5, shape: 'circle', how: 'Draw a circle.' },
+    { id: 'fireball', name: 'Fireball', level: 6, shape: 'triangle', how: 'Draw a triangle.' },
+    { id: 'hearts', name: 'Heartbloom', level: 8, shape: 'heart', how: 'Draw a heart.' },
+    { id: 'lightning', name: 'Lightning', level: 10, shape: 'zigzag', how: 'Draw a zigzag. Also strikes every quest you clear.', toggle: true },
+    { id: 'ward', name: 'Ward', level: 12, shape: 'square', how: 'Draw a square.' },
+    { id: 'rain', name: 'Rainfall', level: 15, shape: 'down', how: 'Swipe straight down.' },
+    { id: 'starfall', name: 'Starfall', level: 18, shape: 'star', how: 'Draw a five-pointed star in one stroke.' },
+    { id: 'meteor', name: 'Meteor', level: 20, shape: 'diagonal', how: 'Slash diagonally.' },
+    { id: 'vortex', name: 'Vortex', level: 25, shape: 'spiral', how: 'Draw a spiral.' },
     { id: 'enchant', name: 'Enchant', scroll: true, how: 'Learned from a secret scroll. Tap ✧ on a quest: it glows and gives double XP. One at a time.' },
   ];
   const level = () => levelInfo(xp()).level;
@@ -740,7 +854,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     if (!sp) return false;
     if (sp.scroll) return secretKinds().has('spellscroll');
     // spells are knowledge: an XP reset doesn't make you forget them
-    const best = levelInfo(progress.log.reduce((n, e) => n + (Number(e.xp) || XP_PER_QUEST), 0)).level;
+    const best = levelInfo(progress.log.reduce((n, e) => n + entryXp(e), 0)).level;
     return Math.max(level(), best) >= sp.level;
   }
   const spellOn = (id) => learned(id) && (prefs.spells || {})[id] !== false;
@@ -817,14 +931,20 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const end = pts[pts.length - 1];
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-    const map = { circle: 'circle', zigzag: 'lightning', down: 'rain', diagonal: 'meteor' };
-    const id = map[kind];
+    const sp0 = SPELLS.find((x) => x.shape === kind);
+    const id = sp0 && sp0.id;
     if (!id) { Sound.fizzle && Sound.fizzle(); FX.poof(end.x, end.y); return false; }
     const sp = SPELLS.find((s) => s.id === id);
     if (!learned(id)) { Sound.fizzle && Sound.fizzle(); FX.poof(end.x, end.y); toast(`You don't know ${sp.name} yet: it unlocks at level ${sp.level}.`); return false; }
     if (id === 'circle') { Magic.circle(cx, cy, Math.max(140, Math.max(...xs) - Math.min(...xs) + 60), TIERS[tierIndex(level())].a); FX.burst(cx, cy, { count: 60, power: 1, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.cast && Sound.cast(); }
     if (id === 'lightning') { Magic.bolt(end.x, end.y); Sound.thunder && Sound.thunder(); FX.cut(end.x, end.y); }
     if (id === 'rain') { Magic.rainfall(15000); Sound.cast && Sound.cast(); toast('Rainfall: the tavern roof is leaking again.'); }
+    const col = TIERS[tierIndex(level())].a;
+    if (id === 'fireball') { Magic.fireball(cx, cy); Sound.boom && Sound.boom(); FX.shake($('#app'), 300); api.vibrate(60); }
+    if (id === 'hearts') { Magic.hearts(cx, cy); Sound.cast && Sound.cast(); }
+    if (id === 'ward') { Magic.ward(cx, cy, col); Sound.cast && Sound.cast(); }
+    if (id === 'starfall') { Magic.starfall(); Sound.cast && Sound.cast(); }
+    if (id === 'vortex') { Magic.vortex(cx, cy); Sound.cast && Sound.cast(); }
     if (id === 'meteor') { Magic.meteor(end.x, end.y, () => { Sound.boom && Sound.boom(); FX.shake($('#app'), 600); api.vibrate(120); for (let i = 0; i < 3; i++) FX.cut(end.x + (Math.random() - 0.5) * 60, end.y + (Math.random() - 0.5) * 40); }); }
     api.vibrate(30);
     return true;
@@ -872,7 +992,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   function openSpellbook() {
     const wrap = document.createElement('div'); wrap.className = 'modal-wrap spellbook-wrap';
     const lv = level();
-    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>New spells come every five levels. To cast, hold still on bare wall (or the sign) until it buzzes, then draw.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
+    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>You learn new spells as you level up. To cast, hold still on bare wall (or the sign) until it buzzes, then draw the shape in one stroke.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
     const list = $('.spell-list', wrap);
     for (const sp of SPELLS) {
       const ok = learned(sp.id);
@@ -1027,6 +1147,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     $('#btn-spellbook').addEventListener('click', openSpellbook);
     $('#btn-garden').addEventListener('click', openGarden);
     $('#btn-wall').addEventListener('click', cycleWall);
+    if (!api.native) window.__forceSecret = (kind) => { const s = secretsState(), sp = bareSpot() || { x: 120, y: 120 }; s.active = [{ id: `t${now()}`, kind, x: Math.round(sp.x), y: Math.round(sp.y), until: now() + 3600e3, tilt: 0 }]; drawSecrets(); };   // browser tests only
     tickSecrets();
     setInterval(() => { if (!editing) tickSecrets(); }, 30 * 1000);
     // the crest sparkles in its tier colours, a hot day throws embers

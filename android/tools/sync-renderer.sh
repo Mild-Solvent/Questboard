@@ -14,6 +14,7 @@ sed 's#\.\./\.\./assets/##g' "$src/sound.js" > "$www/sound.js"
 mkdir -p "$www/sfx/cut" "$www/tex"
 find "$www/sfx/cut" -name "*.ogg" -delete   # the clip set changes between releases
 cp "$assets"/sfx/cut/*.ogg "$www/sfx/cut/"
+find "$www/tex" -name "*.webp" -delete
 cp "$assets"/tex/*.webp "$www/tex/"
 sed 's#\.\./\.\./assets/##g' "$src/styles.css" > "$www/styles.css"
 cp "$assets/wood.png" "$www/"

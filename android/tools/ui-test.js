@@ -252,11 +252,11 @@ async function waitHealth() {
     await page.evaluate(() => window.Sync.syncNow('test'));
     await page.waitForFunction((n) => document.querySelector('#stat-total').textContent === String(n), prog7.log.filter((e) => !e.secret).length, { timeout: 8000 }).catch(() => {});
     const quests7 = prog7.log.filter((e) => !e.secret);
-    const xp7 = prog7.log.reduce((n, e) => n + (Number(e.xp) || 25), 0);
+    const xp7 = prog7.log.reduce((n, e) => n + (e.secret ? 0 : Number(e.xp) || 25), 0);   // 0.6.1: old secret entries count 0 too
     let lvl = 1, rem = xp7; while (rem >= 100 + (lvl - 1) * 50) { rem -= 100 + (lvl - 1) * 50; lvl++; }
     const hero7 = await page.evaluate(() => ({ total: document.querySelector('#stat-total').textContent, today: document.querySelector('#stat-today').textContent, lbl: document.querySelector('#stat-today-lbl').textContent, heat: document.querySelector('#stat-today-box').dataset.heat, xp: document.querySelector('#xp-label').textContent, level: document.querySelector('#level-num').textContent, tier: document.querySelector('#tier-name').textContent }));
     check('0.5.0: cleared total skips secrets', hero7.total === String(quests7.length), JSON.stringify(hero7));
-    check('0.5.0: XP sums each entry (secret +100)', hero7.level === String(lvl) && hero7.xp === `${rem} / ${100 + (lvl - 1) * 50} XP`, `want L${lvl} ${rem}`);
+    check('0.6.1: XP sums each entry, the old +100 secret counts 0', hero7.level === String(lvl) && hero7.xp === `${rem} / ${100 + (lvl - 1) * 50} XP`, `want L${lvl} ${rem}`);
     const today7 = quests7.filter((e) => new Date(e.at).toDateString() === new Date().toDateString()).length;
     check('0.5.0: heat label on cleared today', hero7.today === String(today7) && (today7 < 3 || hero7.lbl !== 'cleared today'), `${hero7.today} ${hero7.lbl} heat=${hero7.heat}`);
     check('0.5.0: tier pill shown', /^(Bronze|Silver|Gold)$/.test(hero7.tier), hero7.tier);
@@ -307,7 +307,7 @@ async function waitHealth() {
     await page.waitForSelector('#sheet:not([hidden])');
     await page.click('#btn-spellbook');
     await page.waitForSelector('.spellbook-wrap .spell-list li');
-    check('0.6.0: spellbook lists six spells', (await page.locator('.spellbook-wrap .spell-list li').count()) === 6);
+    check('0.6.1: spellbook lists eleven spells', (await page.locator('.spellbook-wrap .spell-list li').count()) === 11, String(await page.locator('.spellbook-wrap .spell-list li').count()));
     await page.evaluate(() => window.__qbBack());
     check('0.6.0: back closes the spellbook', (await page.locator('.spellbook-wrap').count()) === 0);
     await page.click('#btn-wall');
@@ -343,6 +343,37 @@ async function waitHealth() {
     await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
     const qOff = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
     check('quest added offline is pushed when sync is back', qOff.includes('- [ ] Added while offline'));
+
+    // 0.6.1: secrets give no XP and do something silly; shapes are recognised from finger-sized strokes
+    if (!(await page.$eval('#sheet', (e) => e.hidden))) await page.click('#set-close');
+    const xpBeforeSecret = await page.textContent('#xp-label');
+    await page.evaluate(() => window.__forceSecret('coin'));
+    await page.waitForSelector('.secret');
+    await page.$eval('.secret', (e) => e.click());
+    await sleep(800);
+    check('0.6.1: finding a secret gives no XP', (await page.textContent('#xp-label')) === xpBeforeSecret, `${xpBeforeSecret} -> ${await page.textContent('#xp-label')}`);
+    check('0.6.1: a coin secret rains coins', (await page.locator('#fun-layer .fun-fall').count()) > 10);
+    await page.evaluate(() => window.__forceSecret('potion'));
+    await page.$eval('.secret', (e) => e.click());
+    await sleep(300);
+    check('0.6.1: a potion changes the room', await page.evaluate(() => /fx-(tiny|wobble|rainbow|mirror|giant)/.test(document.documentElement.className)));
+    const pw = await page.evaluate(() => document.documentElement.scrollWidth);
+    check('0.6.1: potion does not widen the phone page', pw <= 390, String(pw));
+    await page.evaluate(() => document.documentElement.classList.remove('fx-tiny', 'fx-wobble', 'fx-rainbow', 'fx-mirror', 'fx-giant'));
+    const shapes = await page.evaluate(() => {
+      const poly = (pts, n = 24) => { const out = []; for (let i = 0; i < pts.length - 1; i++) for (let j = 0; j < n; j++) { const t = j / n; out.push({ x: pts[i].x + (pts[i + 1].x - pts[i].x) * t, y: pts[i].y + (pts[i + 1].y - pts[i].y) * t }); } out.push(pts[pts.length - 1]); return out; };
+      const c = { x: 195, y: 400 }, r = 90;
+      const circle = []; for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; circle.push({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r }); }
+      const tri = poly([{ x: 195, y: 310 }, { x: 290, y: 470 }, { x: 100, y: 470 }, { x: 195, y: 310 }]);
+      const sq = poly([{ x: 110, y: 320 }, { x: 280, y: 320 }, { x: 280, y: 490 }, { x: 110, y: 490 }, { x: 110, y: 320 }]);
+      const star = []; for (let i = 0; i <= 5; i++) { const a = -Math.PI / 2 + (i * 4 * Math.PI) / 5; star.push({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r }); }
+      return { circle: Magic.recognize(circle), triangle: Magic.recognize(tri), square: Magic.recognize(sq), star: Magic.recognize(poly(star)) };
+    });
+    check('0.6.1: recogniser knows circle, triangle, square and star at phone size', shapes.circle === 'circle' && shapes.triangle === 'triangle' && shapes.square === 'square' && shapes.star === 'star', JSON.stringify(shapes));
+    await page.click('#btn-theme'); await sleep(700);
+    check('0.6.1: Abyss has the sea behind the boards', await page.evaluate(() => { const s = document.getElementById('sea'); return !!s && getComputedStyle(s).display !== 'none' && s.querySelectorAll('.fish').length > 0; }));
+    await page.screenshot({ path: path.join(outDir, 'phone-abyss-sea.png') });
+    await page.click('#btn-theme'); await sleep(500);
 
     // 0.6.0 in-app updater: settings checks the release feed, the APK downloads inside the app,
     // a pill offers Install, and Install asks first, then hands the file to Android
