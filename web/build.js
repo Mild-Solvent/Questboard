@@ -30,6 +30,8 @@ for (const f of fs.readdirSync(renderer)) {
 }
 for (const f of fs.readdirSync(path.join(root, 'assets', 'fonts'))) fs.copyFileSync(path.join(root, 'assets', 'fonts', f), path.join(out, 'fonts', f));
 fs.copyFileSync(path.join(root, 'assets', 'wood.png'), path.join(out, 'wood.png'));
+fs.mkdirSync(path.join(out, 'tex'), { recursive: true });
+for (const f of fs.readdirSync(path.join(root, 'assets', 'tex'))) fs.copyFileSync(path.join(root, 'assets', 'tex', f), path.join(out, 'tex', f));
 fs.mkdirSync(path.join(out, 'sfx', 'cut'), { recursive: true });
 for (const f of fs.readdirSync(path.join(root, 'assets', 'sfx', 'cut'))) fs.copyFileSync(path.join(root, 'assets', 'sfx', 'cut', f), path.join(out, 'sfx', 'cut', f));
 for (const f of ['shim.js', 'web.css']) fs.copyFileSync(path.join(__dirname, f), path.join(out, f));

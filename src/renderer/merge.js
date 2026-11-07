@@ -138,6 +138,15 @@
     // an XP reset on any device holds everywhere: the latest reset wins
     const resetAt = [a.resetAt, b.resetAt].filter(Boolean).sort().pop();
     if (resetAt) out.resetAt = resetAt;
+    // when each quest was first seen (for corruption): the earliest sighting wins
+    if (a.born || b.born) {
+      const born = { ...(b.born || {}) };
+      for (const [k, v] of Object.entries(a.born || {})) if (!born[k] || v < born[k]) born[k] = v;
+      out.born = born;
+    }
+    // the enchanted quest: the latest choice wins
+    const en = [a.enchant, b.enchant].filter((x) => x && x.at).sort((x, y) => (x.at < y.at ? -1 : 1)).pop();
+    if (en) out.enchant = en;
     return out;
   }
 

@@ -171,6 +171,8 @@
   const parts = [];   // {x,y,vx,vy,life,max,size,c,kind,g,rot,vr}
   const rings = [];   // {x,y,r,max,life,c}
   let mouse = { x: -100, y: -100, px: -100, py: -100 };
+  let trailMode = 'normal';
+  const EMBER = ['#ffb347', '#ff6a2b', '#ffd36b', '#fff1c2', '#ff3b1f'];
   let lastTrail = 0;
 
   window.addEventListener('mousemove', (e) => {
@@ -180,15 +182,16 @@
     const speed = Math.hypot(mouse.x - mouse.px, mouse.y - mouse.py);
     if (now - lastTrail > 12) {
       lastTrail = now;
-      const n = Math.min(4, 1 + (speed / 12) | 0);
+      const ember = trailMode === 'ember' && theme === 'tavern';
+      const n = Math.min(ember ? 7 : 4, (ember ? 2 : 1) + (speed / 12) | 0);
       for (let i = 0; i < n; i++) {
         parts.push({
           x: mouse.x + rnd(-2, 2), y: mouse.y + rnd(-2, 2),
           vx: rnd(-0.4, 0.4) - (mouse.x - mouse.px) * 0.03,
-          vy: rnd(-0.4, 0.4) - (mouse.y - mouse.py) * 0.03 + (theme === 'abyss' ? -0.3 : -0.15),
-          life: 0, max: rnd(350, 700),
-          size: rnd(1.5, theme === 'abyss' ? 4.5 : 3.2),
-          c: pick(palette[theme].trail), kind: 'trail', g: 0,
+          vy: rnd(-0.4, 0.4) - (mouse.y - mouse.py) * 0.03 + (theme === 'abyss' ? -0.3 : ember ? -0.9 : -0.15),
+          life: 0, max: rnd(350, ember ? 900 : 700),
+          size: rnd(1.5, theme === 'abyss' ? 4.5 : ember ? 4.6 : 3.2),
+          c: pick(ember ? EMBER : palette[theme].trail), kind: 'trail', g: ember ? -0.02 : 0,
         });
       }
     }
@@ -257,7 +260,7 @@
       if (p.life >= p.max) { parts.splice(i, 1); continue; }
       const u = p.life / p.max;
       p.vy += (p.g || 0) * k;
-      if (p.kind !== 'trail') { const f = p.kind === 'streak' ? 0.94 : 0.985; p.vx *= Math.pow(f, k); p.vy *= Math.pow(f, k); }
+      if (p.kind !== 'trail' && !p.keep) { const f = p.kind === 'streak' ? 0.94 : 0.985; p.vx *= Math.pow(f, k); p.vy *= Math.pow(f, k); }
       p.x += p.vx * k; p.y += p.vy * k;
       if (p.rot !== undefined) p.rot += p.vr * k;
       const alpha = p.kind === 'trail' ? (1 - u) * 0.9 : (u < 0.7 ? 1 : 1 - (u - 0.7) / 0.3);
@@ -272,7 +275,8 @@
         fctx.closePath(); fctx.fill(); fctx.restore();
       } else if (p.kind === 'streak') {
         fctx.strokeStyle = p.c; fctx.lineWidth = p.size * (1 - u);
-        fctx.beginPath(); fctx.moveTo(p.x, p.y); fctx.lineTo(p.x - p.vx * 6, p.y - p.vy * 6); fctx.stroke();
+        const tl = p.keep ? 1.4 : 6;
+        fctx.beginPath(); fctx.moveTo(p.x, p.y); fctx.lineTo(p.x - p.vx * tl, p.y - p.vy * tl); fctx.stroke();
       } else if (p.kind === 'shard') {
         fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.rot);
         fctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
@@ -360,5 +364,12 @@
       parts.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 0, max: rnd(500, 800), size: rnd(2, 4), c: pick(cols), kind: 'streak', g: 0 });
     }
   }
-  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, drawCutOn: (ctx, c) => drawCut(c, ctx), sparkle, embers, nova, get theme() { return theme; } };
+  // raindrops falling over the whole window (the Rainfall spell)
+  function drops(n) {
+    for (let i = 0; i < n; i++) {
+      parts.push({ x: rnd(-40, W), y: rnd(-30, -5), vx: 2.2, vy: rnd(13, 18), life: 0, max: rnd(900, 1400), size: rnd(1, 1.8), c: pick(['#cfe6ff', '#9fc8ff', '#ffffff']), kind: 'streak', g: 0.2, keep: true });
+    }
+  }
+  function setTrail(mode) { trailMode = mode; }
+  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, drawCutOn: (ctx, c) => drawCut(c, ctx), sparkle, embers, nova, drops, setTrail, get theme() { return theme; } };
 })();

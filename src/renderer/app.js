@@ -42,7 +42,7 @@
   const xpForLevel = (lvl) => 100 + (lvl - 1) * 50;
   // XP only counts what came after the last reset (the quest history itself is kept)
   const totalXp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : Number(e.xp) || XP_PER_QUEST), 0);
-  const questLog = () => progress.log.filter((e) => !e.secret);
+  const questLog = () => progress.log.filter((e) => !e.secret && !e.bonus);
 
   // Rank tiers: every three levels the crest turns into a better metal or gem.
   const TIERS = [
@@ -183,6 +183,7 @@
     boards.prepend(cutLayer);
     cutLayer.after(secretLayer);
     drawSecrets();
+    ensureBorn();
     const ordered = [...doc.groups].sort((a, b) => (isFeatured(b) ? 1 : 0) - (isFeatured(a) ? 1 : 0));
     ordered.forEach((g, i) => {
       const wrap = tplGroup.content.firstElementChild.cloneNode(true);
@@ -432,8 +433,7 @@
     const onSign = !!t.closest('#hero') && !t.closest('button, .stat, .crest-wrap, .xp-bar');
     if (!(onSign || t === boards || t === document.body || t.id === 'app' || t.classList.contains('canvas-spacer'))) return;
     Sound.unlock();
-    if (settings.theme === 'abyss') { FX.splash(e.clientX, e.clientY); Sound.splash(); }
-    else { FX.cut(e.clientX, e.clientY); Sound.cut(); }
+    beginGesture(e);
   });
 
   function questEl(g, q) {
@@ -454,6 +454,16 @@
     rune.addEventListener('click', (e) => { e.stopPropagation(); toggle(g, q, li, rune); });
     rune.addEventListener('mouseenter', () => Sound.hover());
     li.addEventListener('contextmenu', (e) => { e.preventDefault(); removeQuest(g, q, li); });
+    if (!isDaily(g) && !q.done) {
+      const st = corruption(q);
+      if (st) { li.classList.add(`corrupt-${st}`); li.title = ['', 'This quest has been waiting a week. It is starting to rot.', 'Two weeks untouched: it is turning into something.', 'A month old: it has become a monster. Clear it to purify it.'][st]; }
+      if (progress.enchant && progress.enchant.key && progress.enchant.key === norm(q.text)) li.classList.add('enchanted');
+      if (learned('enchant')) {
+        const en = document.createElement('button'); en.className = 'enchant-btn'; en.title = 'Enchant: double XP (one quest at a time)'; en.textContent = '✧';
+        en.addEventListener('click', (e) => { e.stopPropagation(); enchantQuest(q, li); });
+        li.appendChild(en);
+      }
+    }
     const textEl = $('.quest-text', li);
     textEl.addEventListener('dblclick', (e) => { e.stopPropagation(); editQuestText(g, q, textEl); });
     const edit = document.createElement('button'); edit.className = 'edit'; edit.title = 'Edit quest'; edit.textContent = '✎';
@@ -504,14 +514,22 @@
       busy = true;
       if (!daily) q.done = true;
       const before = levelInfo(totalXp()).level;
-      progress.log.push({ text: q.text, at: new Date().toISOString(), device: info.device });
+      const { xp, notes } = questXp(g, q);
+      const entry = { text: q.text, at: new Date().toISOString(), device: info.device };
+      if (xp !== XP_PER_QUEST) entry.xp = xp;
+      progress.log.push(entry);
+      if (progress.enchant && progress.enchant.key === norm(q.text)) progress.enchant = { key: null, at: entry.at };
+      const comboHit = checkCombo();
       const after = levelInfo(totalXp()).level;
+      if (spellOn('lightning')) { Magic.bolt(cx, cy); Sound.thunder(); }
+      if (li.className.includes('corrupt-')) { Sound.purify(); FX.burst(cx, cy, { count: 60, power: 1, colors: ['#c58cff', '#7a2dd6', '#ffffff', '#e6d0ff'] }); }
       li.classList.add('completing');
       FX.burst(cx, cy, { count: 90, power: 1.1 });
       FX.shake($('#app'));
       Sound.complete();
-      floatText(cx + 40, cy, `+${XP_PER_QUEST} XP`);
-      banner(pick(['Quest complete!', 'Done and dusted!', 'Slain!', 'Another one!', 'Cleared!', 'Victory!']), q.text);
+      floatText(cx + 40, cy, `+${xp} XP`);
+      banner(notes.length ? notes.join(' · ') : pick(['Quest complete!', 'Done and dusted!', 'Slain!', 'Another one!', 'Cleared!', 'Victory!']), q.text);
+      if (comboHit) setTimeout(comboHit, 900);
       const crest = $('#rank-crest'); crest.classList.remove('pulse'); void crest.offsetWidth; crest.classList.add('pulse');
       changed();
       setTimeout(() => {
@@ -524,10 +542,11 @@
     } else {
       if (!daily) q.done = false;
       let idx = -1; progress.log.forEach((e, i) => { if (e.text === q.text) idx = i; });
-      if (idx >= 0) { const e = progress.log.splice(idx, 1)[0]; progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`); }
+      let lost = XP_PER_QUEST;
+      if (idx >= 0) { const e = progress.log.splice(idx, 1)[0]; lost = Number(e.xp) || XP_PER_QUEST; progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`); }
       FX.poof(cx, cy);
       Sound.undo();
-      floatText(cx + 40, cy, `-${XP_PER_QUEST} XP`, true);
+      floatText(cx + 40, cy, `-${lost} XP`, true);
       changed();
       render();
     }
@@ -607,6 +626,8 @@
     const ti = tierIndex(level), t = TIERS[ti], cols = tierColors(t);
     const ascended = ti > tierIndex(level - 1);
     banner(ascended ? `${t.name} rank!` : 'Level up!', `${level} — ${rankName(level)}`, true);
+    const newSpell = SPELLS.find((s) => s.level === level);
+    if (newSpell) setTimeout(() => { banner(`New spell: ${newSpell.name}`, newSpell.how); refreshMagicUi(); }, 2600);
     Sound.levelUp();
     const app = $('#app');
     app.classList.remove('quaking'); void app.offsetWidth; app.classList.add('quaking');
@@ -640,6 +661,9 @@
     { id: 'gem', name: 'Glittering gem', xp: 40, w: 10 },
     { id: 'rune', name: 'Glowing rune stone', xp: 40, w: 6 },
     { id: 'egg', name: 'Dragon egg', xp: 100, w: 2 },
+    { id: 'gatekey', name: 'Garden gate key', xp: 30, w: 9, when: () => !gardenOpen() },
+    { id: 'spellscroll', name: 'Spell scroll: Enchant', xp: 30, w: 7, when: () => !learned('enchant') },
+    ...Object.keys(Magic.FAMILIARS).filter((f) => f !== 'dragon').map((f) => ({ id: `fam-${f}`, fam: f, name: Magic.FAMILIARS[f].name, xp: 25, w: 4, when: () => !familiars().includes(f) })),
   ];
   const SECRET_ART = {
     coin: '<svg viewBox="0 0 24 24"><defs><radialGradient id="sc" cx="35%" cy="30%"><stop offset="0" stop-color="#fff7c8"/><stop offset=".5" stop-color="#f2b632"/><stop offset="1" stop-color="#8a5a0a"/></radialGradient></defs><ellipse cx="12" cy="12" rx="9" ry="9" fill="url(#sc)" stroke="#5a3a06" stroke-width="1"/><ellipse cx="12" cy="12" rx="6" ry="6" fill="none" stroke="#a8740e" stroke-width="1"/><path d="M12 8v8M10 10h4M10 14h4" stroke="#7a4e06" stroke-width="1.2"/></svg>',
@@ -663,10 +687,11 @@
     return s;
   }
   function pickKind() {
-    const total = SECRET_KINDS.reduce((n, k) => n + k.w, 0);
+    const pool = SECRET_KINDS.filter((k) => !k.when || k.when());
+    const total = pool.reduce((n, k) => n + k.w, 0);
     let r = Math.random() * total;
-    for (const k of SECRET_KINDS) { r -= k.w; if (r <= 0) return k; }
-    return SECRET_KINDS[0];
+    for (const k of pool) { r -= k.w; if (r <= 0) return k; }
+    return pool[0];
   }
   function bareSpot() {
     const br = boards.getBoundingClientRect();
@@ -706,7 +731,8 @@
       el.style.left = `${it.x}px`; el.style.top = `${it.y}px`;
       el.style.setProperty('--tilt', `${it.tilt || 0}deg`);
       el.style.setProperty('--glint-d', `${(Math.random() * 9).toFixed(1)}s`);
-      el.innerHTML = SECRET_ART[k.id];
+      el.innerHTML = k.fam ? `<span class="peek">${Magic.FAMILIARS[k.fam].e}</span>` : (SECRET_ART[k.id] || SECRET_ART.scroll);
+      if (k.fam) el.classList.add('secret-fam');
       el.addEventListener('pointerdown', (e) => e.stopPropagation());
       el.addEventListener('click', (e) => { e.stopPropagation(); findSecret(it, k, el); });
       secretLayer.appendChild(el);
@@ -718,7 +744,7 @@
     s.found += 1;
     saveSettings();
     const before = levelInfo(totalXp()).level;
-    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: info.device, xp: k.xp, secret: true });
+    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: info.device, xp: k.xp, secret: true, kind: k.id });
     const after = levelInfo(totalXp()).level;
     const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
     el.classList.add('found');
@@ -727,7 +753,12 @@
     FX.sparkle(x, y, { count: 14, spread: 40, colors: ['#ffffff', '#fff4b0', '#9be7ff'], big: true });
     Sound.secret();
     floatText(x + 20, y, `+${k.xp} XP`);
-    banner('Secret found!', `${k.name} · +${k.xp} XP · ${s.found} found so far`);
+    if (k.fam) banner(`${Magic.FAMILIARS[k.fam].name} joins you!`, gardenOpen() ? 'It moved into your garden' : 'It waits by a garden gate you have not found yet');
+    else if (k.id === 'egg') banner('A dragon egg!', 'It hatched: a dragonling lives in your garden now');
+    else if (k.id === 'gatekey') banner('The garden gate key!', 'A secret garden opens: "garden" at the bottom');
+    else if (k.id === 'spellscroll') banner('You learned Enchant!', 'Hover a quest and press ✧ to enchant it');
+    else banner('Secret found!', `${k.name} · +${k.xp} XP · ${s.found} found so far`);
+    refreshMagicUi();
     changed();
     if (after > before) setTimeout(() => levelUp(after), 900);
   }
@@ -870,6 +901,172 @@
     document.documentElement.style.setProperty('--wood-y', `${Math.round(y)}px`);
   }
 
+  // ---------- magic ----------
+  const SPELLS = [
+    { id: 'ember', name: 'Ember trail', level: 5, how: 'Passive: your cursor leaves a trail of fire.', toggle: true },
+    { id: 'circle', name: 'Arcane circle', level: 5, how: 'Hold on the wall, then draw a circle.' },
+    { id: 'lightning', name: 'Lightning', level: 10, how: 'Hold and draw a zigzag. Also strikes every quest you clear.', toggle: true },
+    { id: 'rain', name: 'Rainfall', level: 15, how: 'Hold and swipe straight down.' },
+    { id: 'meteor', name: 'Meteor', level: 20, how: 'Hold and slash diagonally.' },
+    { id: 'enchant', name: 'Enchant', scroll: true, how: 'Learned from a secret scroll. Hover a quest and press ✧: it glows and gives double XP. One at a time.' },
+  ];
+  const level = () => levelInfo(totalXp()).level;
+  const secretKinds = () => new Set(progress.log.filter((e) => e.secret && e.kind).map((e) => e.kind));
+  function learned(id) {
+    const sp = SPELLS.find((s) => s.id === id);
+    if (!sp) return false;
+    if (sp.scroll) return secretKinds().has('spellscroll');
+    // spells are knowledge: an XP reset doesn't make you forget them
+    const best = levelInfo(progress.log.reduce((n, e) => n + (Number(e.xp) || XP_PER_QUEST), 0)).level;
+    return Math.max(level(), best) >= sp.level;
+  }
+  const spellOn = (id) => learned(id) && (settings.spells || {})[id] !== false;
+  const gardenOpen = () => secretKinds().has('gatekey');
+  function familiars() {
+    const k = secretKinds(), out = [];
+    for (const f of Object.keys(Magic.FAMILIARS)) if (k.has(`fam-${f}`)) out.push(f);
+    if (k.has('egg')) out.push('dragon');
+    return out;
+  }
+  function refreshMagicUi() {
+    $('#btn-garden').hidden = !gardenOpen();
+    FX.setTrail(spellOn('ember') ? 'ember' : 'normal');
+  }
+
+  // XP for clearing a quest, with its bonuses
+  function nightNow() { const h = new Date().getHours(); return h < 5; }
+  function morningNow() { const h = new Date().getHours(); return h >= 6 && h < 11; }
+  function questXp(g, q) {
+    let xp = XP_PER_QUEST; const notes = [];
+    if (progress.enchant && progress.enchant.key === norm(q.text)) { xp *= 2; notes.push('Enchanted ×2'); }
+    const st = isDaily(g) ? 0 : corruption(q);
+    if (st) { xp += [0, 10, 20, 40][st]; notes.push(st === 3 ? 'Monster slain!' : 'Purified!'); }
+    if (nightNow()) { xp += 10; notes.push('Night owl'); }
+    else if (morningNow()) { xp += 15; notes.push('Early bird'); }
+    return { xp, notes };
+  }
+
+  // corruption: quests nobody touched for a long time rot, then turn into monsters
+  function ensureBorn() {
+    if (!progress.born) progress.born = {};
+    let added = false;
+    const now = new Date().toISOString();
+    for (const g of doc.groups) for (const it of g.items) {
+      if (it.type !== 'quest' || it.done) continue;
+      const k = norm(it.text);
+      if (!progress.born[k]) { progress.born[k] = now; added = true; }
+    }
+    if (added) { saveLocal(); scheduleSync(4000); }
+  }
+  function corruption(q) {
+    const b = progress.born && progress.born[norm(q.text)];
+    if (!b) return 0;
+    const days = (Date.now() - Date.parse(b)) / 86400e3;
+    return days >= 30 ? 3 : days >= 14 ? 2 : days >= 7 ? 1 : 0;
+  }
+
+  // enchant one quest at a time
+  function enchantQuest(q, li) {
+    const k = norm(q.text);
+    const same = progress.enchant && progress.enchant.key === k;
+    progress.enchant = { key: same ? null : k, at: new Date().toISOString() };
+    const r = li.getBoundingClientRect();
+    if (!same) { FX.sparkle(r.left + 30, r.top + r.height / 2, { count: 14, spread: 30, colors: ['#e6d0ff', '#c58cff', '#ffffff', '#ffd36b'], big: true }); Sound.cast(); toast('Enchanted: this quest gives double XP.'); }
+    else toast('Enchantment lifted.');
+    changed(); render();
+  }
+
+  // rune circle: three quests inside an hour
+  function checkCombo() {
+    const hour = Date.now() - 3600e3;
+    const lastCombo = progress.log.filter((e) => e.bonus === 'combo').map((e) => Date.parse(e.at)).sort().pop() || 0;
+    const recent = questLog().filter((e) => Date.parse(e.at) > Math.max(hour, lastCombo));
+    if (recent.length < 3) return null;
+    progress.log.push({ text: 'Combo: rune circle', at: new Date().toISOString(), device: info.device, xp: 30, bonus: 'combo' });
+    return () => {
+      const br = boards.getBoundingClientRect();
+      Magic.circle(br.left + br.width / 2, br.top + Math.min(br.height / 2, 300), 300, TIERS[tierIndex(level())].a, 4200);
+      Sound.cast();
+      banner('Rune circle!', 'Three quests within an hour · +30 XP');
+      renderHero();
+    };
+  }
+
+  // casting: hold on the wall (or the sign), then draw
+  let gesture = null;
+  function castAt(kind, pts) {
+    const end = pts[pts.length - 1];
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const map = { circle: 'circle', zigzag: 'lightning', down: 'rain', diagonal: 'meteor' };
+    const id = map[kind];
+    if (!id) { Sound.fizzle(); FX.poof(end.x, end.y); return false; }
+    const sp = SPELLS.find((s) => s.id === id);
+    if (!learned(id)) { Sound.fizzle(); FX.poof(end.x, end.y); toast(`You don't know ${sp.name} yet: it unlocks at level ${sp.level}.`); return false; }
+    if (id === 'circle') { Magic.circle(cx, cy, Math.max(160, Math.max(...xs) - Math.min(...xs) + 60), TIERS[tierIndex(level())].a); FX.burst(cx, cy, { count: 70, power: 1, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.cast(); }
+    if (id === 'lightning') { Magic.bolt(end.x, end.y); Sound.thunder(); FX.cut(end.x, end.y); }
+    if (id === 'rain') { Magic.rainfall(15000); Sound.cast(); toast('Rainfall: the tavern roof is leaking again.'); }
+    if (id === 'meteor') { Magic.meteor(end.x, end.y, () => { Sound.boom(); FX.shake($('#app'), 600); for (let i = 0; i < 3; i++) FX.cut(end.x + (Math.random() - 0.5) * 60, end.y + (Math.random() - 0.5) * 40); }); }
+    return true;
+  }
+  function beginGesture(e) {
+    gesture = { x: e.clientX, y: e.clientY, t: performance.now(), pts: [{ x: e.clientX, y: e.clientY }], drawing: false, id: e.pointerId, stroke: null };
+    gesture.timer = setTimeout(() => { if (gesture && !gesture.drawing) startDrawing(); }, 220);
+  }
+  function startDrawing() {
+    gesture.drawing = true;
+    gesture.stroke = Magic.startStroke(TIERS[tierIndex(level())].a);
+    for (const p of gesture.pts) gesture.stroke.add(p.x, p.y);
+    document.documentElement.classList.add('casting');
+  }
+  window.addEventListener('pointermove', (e) => {
+    if (!gesture || e.pointerId !== gesture.id) return;
+    const p = { x: e.clientX, y: e.clientY };
+    gesture.pts.push(p);
+    if (!gesture.drawing && Math.hypot(p.x - gesture.x, p.y - gesture.y) > 14) startDrawing();
+    if (gesture.drawing) { gesture.stroke.add(p.x, p.y); if (Math.random() < 0.3) { FX.sparkle(p.x, p.y, { count: 1, spread: 4, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.draw(); } }
+  });
+  function endGesture(e) {
+    if (!gesture || (e && e.pointerId !== gesture.id)) return;
+    const g = gesture; gesture = null; clearTimeout(g.timer);
+    document.documentElement.classList.remove('casting');
+    if (!g.drawing) {           // a plain click: a sword cut (Tavern) or a splash (Abyss), as before
+      if (settings.theme === 'abyss') { FX.splash(g.x, g.y); Sound.splash(); }
+      else { FX.cut(g.x, g.y); Sound.cut(); }
+      return;
+    }
+    const kind = Magic.recognize(g.pts);
+    g.stroke.end(castAt(kind, g.pts));
+  }
+  window.addEventListener('pointerup', endGesture);
+  window.addEventListener('pointercancel', (e) => { if (gesture && gesture.stroke) gesture.stroke.end(false); gesture = null; document.documentElement.classList.remove('casting'); });
+
+  function openSpellbook() {
+    const wrap = document.createElement('div'); wrap.className = 'modal-wrap spellbook-wrap';
+    const lv = level();
+    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>New spells come every five levels. To cast, hold on bare wall (or the sign) for a moment, then draw.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
+    const list = $('.spell-list', wrap);
+    for (const sp of SPELLS) {
+      const ok = learned(sp.id);
+      const li = document.createElement('li'); li.className = ok ? 'known' : 'locked';
+      li.innerHTML = `<b></b><span class="req"></span><small></small>`;
+      $('b', li).textContent = ok ? sp.name : `${sp.name}`;
+      $('.req', li).textContent = ok ? 'learned' : sp.scroll ? 'find its scroll' : `level ${sp.level}`;
+      $('small', li).textContent = sp.how;
+      if (ok && sp.toggle) {
+        const t = document.createElement('button'); t.type = 'button'; t.className = 'btn seg' + (spellOn(sp.id) ? ' on' : '');
+        t.textContent = spellOn(sp.id) ? 'on' : 'off';
+        t.addEventListener('click', () => { settings.spells = settings.spells || {}; settings.spells[sp.id] = !spellOn(sp.id); saveSettings(); refreshMagicUi(); t.textContent = spellOn(sp.id) ? 'on' : 'off'; t.classList.toggle('on', spellOn(sp.id)); });
+        li.appendChild(t);
+      }
+      list.appendChild(li);
+    }
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    $('.modal-row .btn', wrap).addEventListener('click', close);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  }
+
   // ---------- the hidden XP reset: Shift + double-click the version number, then survive ten questions ----------
   const RESET_STEPS = [
     ['Reset your XP?', 'Your level and rank go back to 1. Quests and history stay.', 'Yes, reset', 'No'],
@@ -929,6 +1126,19 @@
     document.documentElement.setAttribute('data-theme', name);
     FX.setTheme(name);
     renderHero();
+  }
+  // wall textures (tavern): planks, weathered, cracked, charred, or the classic wood
+  const WALLS = [['planks', 'Planks'], ['weathered', 'Weathered'], ['cracked', 'Cracked'], ['charred', 'Charred'], ['classic', 'Classic']];
+  function applyWall() {
+    const w = WALLS.find((x) => x[0] === settings.wall) ? settings.wall : 'planks';
+    document.documentElement.setAttribute('data-wall', w);
+    const b = $('#btn-wall'); if (b) b.textContent = 'wall: ' + WALLS.find((x) => x[0] === w)[1].toLowerCase();
+  }
+  function cycleWall() {
+    const i = WALLS.findIndex((x) => x[0] === (settings.wall || 'planks'));
+    settings.wall = WALLS[(i + 1) % WALLS.length][0];
+    applyWall(); saveSettings();
+    if (settings.theme !== 'tavern') banner('Wall: ' + WALLS.find((x) => x[0] === settings.wall)[1], 'shows in the Tavern theme');
   }
   function toggleTheme() {
     applyTheme(settings.theme === 'abyss' ? 'tavern' : 'abyss');
@@ -1103,6 +1313,7 @@
     api.onIdle((idle) => FX.setIdle(idle));
 
     applyTheme(settings.theme || 'tavern');
+    applyWall();
     applySound();
     render();
     refreshAutostart();
@@ -1119,6 +1330,11 @@
     }, 60 * 1000);
     window.addEventListener('focus', () => { if (Sync.ready) runSync('focus'); });
     $('#version').addEventListener('dblclick', (e) => { if (e.shiftKey) resetRitual(); });
+    $('#btn-spellbook').addEventListener('click', openSpellbook);
+    $('#btn-garden').addEventListener('click', () => Magic.openGarden(familiars()));
+    refreshMagicUi();
+    Magic.setNight(nightNow());
+    setInterval(() => { Magic.setNight(nightNow()); refreshMagicUi(); }, 60 * 1000);
     tickSecrets();
     setInterval(tickSecrets, 30 * 1000);
     setInterval(() => {
@@ -1139,6 +1355,7 @@
     alignWood();
 
     $('#btn-theme').addEventListener('click', toggleTheme);
+    $('#btn-wall').addEventListener('click', cycleWall);
     $('#btn-sound').addEventListener('click', () => { settings.sound = !settings.sound; applySound(); if (settings.sound) { Sound.unlock(); Sound.add(); } saveSettings(); });
     $('#btn-autostart').addEventListener('click', async () => {
       const a = await api.getAutostart();
@@ -1170,7 +1387,7 @@
 
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) { if (e.key === 'Escape') closeSettings(); return; }
-      if (e.key === 'Escape') { closeSettings(); closeBackups(); }
+      if (e.key === 'Escape') { closeSettings(); closeBackups(); Magic.closeGarden(); document.querySelectorAll('.spellbook-wrap').forEach((w) => w.remove()); }
       if (e.key === 't' || e.key === 'T') toggleTheme();
       if (e.key === 'm' || e.key === 'M') $('#btn-sound').click();
     });
