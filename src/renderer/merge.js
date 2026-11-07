@@ -134,7 +134,11 @@
     a = a || {}; b = b || {};
     const removed = new Set([...(a.removed || []), ...(b.removed || [])]);
     const log = mergeProgress(a.log, b.log).filter((e) => !removed.has(`${e.text}@@${e.at}`));
-    return { log, removed: [...removed].slice(-500) };
+    const out = { log, removed: [...removed].slice(-500) };
+    // an XP reset on any device holds everywhere: the latest reset wins
+    const resetAt = [a.resetAt, b.resetAt].filter(Boolean).sort().pop();
+    if (resetAt) out.resetAt = resetAt;
+    return out;
   }
 
   const Merge = { parse, serialize, merge, mergeProgress, mergeProgressDoc, norm, index };

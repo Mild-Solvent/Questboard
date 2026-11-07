@@ -40,7 +40,8 @@
 
   // ---------- XP / rank ----------
   const xpForLevel = (lvl) => 100 + (lvl - 1) * 50;
-  const totalXp = () => progress.log.reduce((n, e) => n + (Number(e.xp) || XP_PER_QUEST), 0);
+  // XP only counts what came after the last reset (the quest history itself is kept)
+  const totalXp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : Number(e.xp) || XP_PER_QUEST), 0);
   const questLog = () => progress.log.filter((e) => !e.secret);
 
   // Rank tiers: every three levels the crest turns into a better metal or gem.
@@ -780,9 +781,9 @@
       try { if (rp.text) remoteDoc = JSON.parse(rp.text); } catch { /* ignore bad remote */ }
       const mergedDoc = window.Merge.mergeProgressDoc(progress, remoteDoc);
       const mergedText = JSON.stringify(mergedDoc, null, 2);
-      if (JSON.stringify(mergedDoc.log) !== JSON.stringify(progress.log)) { progress = mergedDoc; renderHero(); saveLocal(); }
+      if (JSON.stringify(mergedDoc.log) !== JSON.stringify(progress.log) || (mergedDoc.resetAt || '') !== (progress.resetAt || '')) { progress = mergedDoc; renderHero(); saveLocal(); }
       else progress = mergedDoc;
-      if (!rp.text || JSON.stringify(mergedDoc.log) !== JSON.stringify(remoteDoc.log || []) || JSON.stringify(mergedDoc.removed) !== JSON.stringify(remoteDoc.removed || [])) {
+      if (!rp.text || JSON.stringify(mergedDoc.log) !== JSON.stringify(remoteDoc.log || []) || JSON.stringify(mergedDoc.removed) !== JSON.stringify(remoteDoc.removed || []) || (mergedDoc.resetAt || '') !== (remoteDoc.resetAt || '')) {
         let res = await Sync.put('progress.json', mergedText, rp.etag);
         if (res.conflict) {
           let again = {}; try { again = JSON.parse(res.text); } catch { /* ignore */ }
@@ -867,6 +868,58 @@
   function alignWood() {
     const y = boards.getBoundingClientRect().top;
     document.documentElement.style.setProperty('--wood-y', `${Math.round(y)}px`);
+  }
+
+  // ---------- the hidden XP reset: Shift + double-click the version number, then survive ten questions ----------
+  const RESET_STEPS = [
+    ['Reset your XP?', 'Your level and rank go back to 1. Quests and history stay.', 'Yes, reset', 'No'],
+    ['Are you sure?', 'All of it. Every level you climbed.', 'I am sure', 'Keep my XP'],
+    ['Really sure?', 'The crest goes back to plain bronze.', 'Really sure', 'Never mind'],
+    ['The guild master raises an eyebrow.', '"You want to start over, adventurer?"', 'I do', 'I misspoke'],
+    ['Think of the fireworks.', 'All those level-ups. Gone.', 'Gone it is', 'Wait, no'],
+    ['Last chance?', 'Not really, there are five more.', 'Continue', 'Stop'],
+    ['The tavern goes quiet.', 'Even the cat looks at you.', 'Do it', 'Pet the cat instead'],
+    ['Are you sure you are sure?', 'Double-sure. Triple-sure.', 'Triple-sure', 'Single-unsure'],
+    ['One more.', 'This is the second to last one. Honestly.', 'Onward', 'Retreat'],
+    ['Type RESET to burn it all.', 'This is the tenth question.', 'Burn it', 'Cancel'],
+  ];
+  function resetRitual() {
+    let step = 0;
+    const wrap = document.createElement('div'); wrap.className = 'modal-wrap ritual';
+    const card = document.createElement('div'); card.className = 'modal-card';
+    wrap.appendChild(card); document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    const show = () => {
+      const [title, text, yes, no] = RESET_STEPS[step];
+      const last = step === RESET_STEPS.length - 1;
+      card.innerHTML = `<h3></h3><p></p>${last ? '<input class="ritual-input" placeholder="RESET" spellcheck="false" />' : ''}<div class="modal-row"><span class="status">${step + 1} / ${RESET_STEPS.length}</span><span class="ritual-btns"></span></div>`;
+      $('h3', card).textContent = title; $('p', card).textContent = text;
+      const b = $('.ritual-btns', card);
+      const y = document.createElement('button'); y.className = 'btn danger'; y.textContent = yes;
+      const n = document.createElement('button'); n.className = 'btn'; n.textContent = no;
+      if (Math.random() < 0.5) b.append(y, n); else b.append(n, y);     // the buttons swap sides now and then
+      n.addEventListener('click', () => { close(); toast('Your XP is safe.'); });
+      y.addEventListener('click', () => {
+        if (last) {
+          if ($('.ritual-input', card).value.trim().toUpperCase() !== 'RESET') { $('.status', card).textContent = 'Type RESET first.'; return; }
+          close(); doReset(); return;
+        }
+        step += 1; show(); FX.shake(card, 300);
+      });
+      if (last) $('.ritual-input', card).focus();
+    };
+    wrap.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') close(); });
+    show();
+  }
+  function doReset() {
+    progress.resetAt = new Date().toISOString();
+    lastToday = null;
+    const r = $('#rank-crest').getBoundingClientRect();
+    FX.poof(r.left + r.width / 2, r.top + r.height / 2);
+    FX.burst(r.left + r.width / 2, r.top + r.height / 2, { count: 40, power: 0.6, colors: ['#9a9a9a', '#6b6b6b', '#ffb347'] });
+    Sound.undo();
+    changed();
+    banner('A fresh start', 'Level 1 · your quest history is kept');
   }
 
   // ---------- theme / prefs ----------
@@ -1065,6 +1118,7 @@
       else if (stamp.includes('1') && !busy && !document.hidden) $$('.quest .resets').length && render();
     }, 60 * 1000);
     window.addEventListener('focus', () => { if (Sync.ready) runSync('focus'); });
+    $('#version').addEventListener('dblclick', (e) => { if (e.shiftKey) resetRitual(); });
     tickSecrets();
     setInterval(tickSecrets, 30 * 1000);
     setInterval(() => {
