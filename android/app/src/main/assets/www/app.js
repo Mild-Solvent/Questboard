@@ -367,12 +367,14 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       if (editing || (accept && !accept(e))) return;
       el.__held = false; sx = e.clientX; sy = e.clientY;
       cancel();
-      t = setTimeout(() => { t = null; el.__held = true; api.vibrate(20); fn(); }, 520);
+      t = setTimeout(fire, 520);
     });
+    // Chrome's own long-press (contextmenu) also opens it, so a busy page can't miss the hold
+    const fire = () => { if (!t) return; cancel(); el.__held = true; api.vibrate(20); fn(); };
     el.addEventListener('pointermove', (e) => { if (t && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
     el.addEventListener('pointerup', cancel);
     el.addEventListener('pointercancel', cancel);
-    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); fire(); });
     // the click that ends a hold must not also tick the quest
     el.addEventListener('click', (e) => { if (el.__held) { e.stopPropagation(); setTimeout(() => { el.__held = false; }, 0); } }, true);
   }

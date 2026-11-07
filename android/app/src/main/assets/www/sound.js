@@ -30,7 +30,7 @@
     o.start(now); o.stop(now + dur + 0.02);
   }
 
-  function noise({ t0 = 0, dur = 0.2, gain = 0.2, hp = 1200 }) {
+  function noise({ t0 = 0, dur = 0.2, gain = 0.2, hp = 1200, bp = 0, q = 1 }) {
     const c = ensure(); if (!c) return;
     const now = c.currentTime + t0;
     const len = Math.floor(c.sampleRate * dur);
@@ -38,7 +38,8 @@
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
     const src = c.createBufferSource(); src.buffer = buf;
-    const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    const f = c.createBiquadFilter();
+    if (bp) { f.type = 'bandpass'; f.frequency.value = bp; f.Q.value = q; } else { f.type = 'highpass'; f.frequency.value = hp; }
     const g = c.createGain(); g.gain.setValueAtTime(gain, now); g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
     src.connect(f); f.connect(g); g.connect(master);
     src.start(now);
@@ -68,9 +69,18 @@
     },
     cut() {
       if (!enabled) return;
-      noise({ dur: 0.09, gain: 0.22, hp: 3500 });
-      tone({ freq: 3200, type: 'sine', dur: 0.16, gain: 0.12, slide: -1400 });
-      tone({ freq: 180, type: 'triangle', t0: 0.02, dur: 0.08, gain: 0.18, slide: -80 });
+      // the blade's swish and ring (the original cut sound)...
+      noise({ dur: 0.09, gain: 0.2, hp: 3500 });
+      tone({ freq: 3200, type: 'sine', dur: 0.16, gain: 0.1, slide: -1400 });
+      // ...then the bite into the plank: a dull knock with a few short wooden body modes.
+      // Pitched a little differently each time so a row of cuts doesn't sound copy-pasted.
+      const v = 0.88 + Math.random() * 0.24, hit = 0.014;
+      noise({ t0: hit, dur: 0.06, gain: 0.55, bp: 700 * v, q: 1.3 });
+      noise({ t0: hit, dur: 0.025, gain: 0.25, bp: 2600 * v, q: 0.8 });
+      tone({ freq: 190 * v, type: 'sine', t0: hit, dur: 0.13, gain: 0.34, slide: -45 });
+      tone({ freq: 437 * v, type: 'sine', t0: hit, dur: 0.075, gain: 0.2, slide: -30 });
+      tone({ freq: 811 * v, type: 'triangle', t0: hit, dur: 0.045, gain: 0.11 });
+      tone({ freq: 1290 * v, type: 'sine', t0: hit, dur: 0.03, gain: 0.06 });
     },
     splash() {
       if (!enabled) return;

@@ -218,6 +218,7 @@ async function waitHealth() {
     const q6 = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
     check('edit: board rename survives a concurrent devbox edit', q6.includes('## Home [daily]') && !q6.includes('## Life') && /## Home \[daily\][^#]*Water plants/.test(q6), q6.replace(/\n/g, '⏎'));
     await page.screenshot({ path: path.join(outDir, 'phone-edit.png') });
+    check('open quests grow the board (no inner scroll, 0.4.8)', await page.$eval('.board .quests:not(.done-list)', (e) => getComputedStyle(e).maxHeight === 'none'));
 
     // back button closes the sheet
     await page.click('#btn-settings');

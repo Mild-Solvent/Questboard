@@ -164,9 +164,7 @@ input { user-select: text; }
 .done-wrap summary::-webkit-details-marker { display: none; }
 .done-wrap summary:hover { opacity: 1; }
 .done-list .quest { font-size: 13px; }
-/* long lists scroll inside the paper instead of growing it over the boards below */
-.board .quests:not(.done-list) { max-height: 330px; overflow-y: auto; overflow-x: hidden; }
-.board-wrap.featured .board .quests:not(.done-list) { max-height: 440px; }
+/* open quests grow the paper; only a long Completed list scrolls inside it */
 .board .done-list { max-height: 168px; overflow-y: auto; overflow-x: hidden; }
 .board .quests::-webkit-scrollbar-corner { background: transparent; }
 .board .quests::-webkit-scrollbar { width: 7px; }
