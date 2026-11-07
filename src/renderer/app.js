@@ -128,7 +128,9 @@
     return `polygon(${pts.join(', ')})`;
   }
 
+  let editing = null, renderLater = false;      // an open inline editor holds off re-renders
   function render() {
+    if (editing) { renderLater = true; return; }
     const scroll = boards.scrollTop;
     boards.innerHTML = '';
     boards.prepend(cutLayer);
@@ -169,6 +171,13 @@
       dbtn.title = daily ? 'Daily board: ticks stay on the board and reset 9 hours later. Click to make it a normal board.' : 'Make this a daily board (ticks reset 9 hours after you make them)';
       dbtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDaily(g); });
       $('.board-head', el).appendChild(dbtn);
+      const title = $('.board-title', el);
+      title.title = 'Double-click to rename';
+      title.addEventListener('dblclick', (e) => { e.stopPropagation(); editBoardTitle(g, title, cleanTitle); });
+      const ebtn = document.createElement('button');
+      ebtn.type = 'button'; ebtn.className = 'board-edit'; ebtn.textContent = '✎'; ebtn.title = 'Rename board';
+      ebtn.addEventListener('click', (e) => { e.stopPropagation(); editBoardTitle(g, title, cleanTitle); });
+      $('.board-head', el).appendChild(ebtn);
 
       const ul = $('.quests', el);
       open.forEach((q) => ul.appendChild(questEl(g, q)));
@@ -259,32 +268,38 @@
     if (e.button !== 0) return;
     const wrap = e.target.closest('.board-wrap');
     if (!wrap || e.target.closest('.quest, .quests, button, input, form, summary, details, .add-row')) return;
+    if (editing) return;
+    drag = { wrap, sx: e.clientX, sy: e.clientY, moved: false, id: e.pointerId };
+    e.preventDefault();
+  });
+  function liftBoard() {
+    const { wrap } = drag;
     if (settings.layout.mode !== 'free') {
       settings.layout.mode = 'free';
-      applyLayout();                                   // freezes everything where it is
+      const d = drag; drag = null; applyLayout(); drag = d;   // freezes everything where it is
     }
     const p = settings.layout.pos[wrap.dataset.group];
-    drag = { wrap, sx: e.clientX, sy: e.clientY, ox: p.x, oy: p.y, moved: false, id: e.pointerId };
-    wrap.setPointerCapture(e.pointerId);
+    drag.ox = p.x; drag.oy = p.y;
+    try { wrap.setPointerCapture(drag.id); } catch { /* pointer already gone */ }
     wrap.classList.remove('nailing');
     wrap.classList.add('lifted');
     wrap.style.zIndex = String(++zTop);
     Sound.lift();
-    e.preventDefault();
-  });
+  }
   boards.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
-    if (!drag.moved && Math.hypot(dx, dy) < 3) return;
-    drag.moved = true;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    if (!drag.moved) { liftBoard(); drag.moved = true; }
     const p = settings.layout.pos[drag.wrap.dataset.group];
     p.x = Math.max(0, drag.ox + dx); p.y = Math.max(0, drag.oy + dy);
     drag.wrap.style.left = `${p.x}px`; drag.wrap.style.top = `${p.y}px`;
   });
   function endDrag(e) {
     if (!drag || (e && e.pointerId !== drag.id)) return;
-    const { wrap } = drag;
+    const { wrap, moved } = drag;
     drag = null;
+    if (!moved) return;                                // a plain click: nothing was lifted
     wrap.classList.remove('lifted');
     wrap.classList.add('nailing');
     setTimeout(() => wrap.classList.remove('nailing'), 700);
@@ -296,6 +311,20 @@
     applyLayout();
   }
   boards.addEventListener('toggle', () => { if (settings.layout.mode === 'free') applyLayout(); }, true);   // completed list opened/closed
+  // Mouse wheel works anywhere: a quest list scrolls itself while it has room, otherwise the wheel
+  // moves the whole board wall (Chromium would otherwise keep the wheel latched on the list).
+  boards.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || !e.deltaY) return;
+    const list = e.target.closest('.quests');
+    if (list) {
+      const room = e.deltaY > 0 ? list.scrollHeight - list.clientHeight - list.scrollTop : list.scrollTop;
+      if (room > 1) return;
+    }
+    if (e.target.closest('input, textarea, [contenteditable="true"]') && !list) return;
+    const px = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * boards.clientHeight : e.deltaY;
+    e.preventDefault();
+    boards.scrollTop += px;
+  }, { passive: false });
   boards.addEventListener('pointerup', endDrag);
   boards.addEventListener('pointercancel', endDrag);
 
@@ -345,6 +374,11 @@
     rune.addEventListener('click', (e) => { e.stopPropagation(); toggle(g, q, li, rune); });
     rune.addEventListener('mouseenter', () => Sound.hover());
     li.addEventListener('contextmenu', (e) => { e.preventDefault(); removeQuest(g, q, li); });
+    const textEl = $('.quest-text', li);
+    textEl.addEventListener('dblclick', (e) => { e.stopPropagation(); editQuestText(g, q, textEl); });
+    const edit = document.createElement('button'); edit.className = 'edit'; edit.title = 'Edit quest'; edit.textContent = '✎';
+    edit.addEventListener('click', (e) => { e.stopPropagation(); editQuestText(g, q, textEl); });
+    li.appendChild(edit);
     const del = document.createElement('button'); del.className = 'del'; del.title = 'Remove quest'; del.textContent = '×';
     del.addEventListener('click', (e) => { e.stopPropagation(); removeQuest(g, q, li); });
     li.appendChild(del);
@@ -417,6 +451,64 @@
       changed();
       render();
     }
+  }
+
+  // ---------- inline editing ----------
+  function inlineEdit(host, value, onSave) {
+    if (editing) return;
+    const input = document.createElement('input');
+    input.className = 'inline-edit'; input.value = value; input.spellcheck = false;
+    const prev = host.innerHTML;
+    host.innerHTML = ''; host.appendChild(input); host.classList.add('editing');
+    editing = input;
+    input.focus(); input.select();
+    let closed = false;
+    const finish = (save) => {
+      if (closed) return; closed = true;
+      editing = null; host.classList.remove('editing');
+      const v = input.value.replace(/\s+/g, ' ').trim();
+      if (save && v && v !== value && onSave(v) !== false) { render(); return; }
+      host.innerHTML = prev;
+      if (renderLater) { renderLater = false; render(); }
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    for (const t of ['pointerdown', 'click', 'dblclick', 'contextmenu']) input.addEventListener(t, (e) => e.stopPropagation());
+  }
+  function editQuestText(g, q, host) {
+    inlineEdit(host, q.text, (text) => {
+      const k = norm(text);
+      if (doc.groups.some((x) => x.items.some((i) => i !== q && i.type === 'quest' && norm(i.text) === k))) { toast('There is already a quest with that name.'); return false; }
+      const old = norm(q.text);
+      q.text = text;
+      // ticks and XP follow the quest: re-file its log entries under the new name
+      progress.log = progress.log.map((e) => {
+        if (norm(e.text) !== old) return e;
+        progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`);
+        return { ...e, text };
+      });
+      changed();
+      Sound.add();
+      return true;
+    });
+  }
+  function editBoardTitle(g, host, shown) {
+    inlineEdit(host, shown, (name) => {
+      const prefix = (/^active:\s*/i.exec(g.title) || [''])[0];
+      const key = `${prefix}${name}`;
+      if (doc.groups.some((x) => x !== g && norm(groupKey(x)) === norm(key))) { toast('There is already a board with that name.'); return false; }
+      const oldKey = groupKey(g);
+      g.title = isDaily(g) ? `${key} [daily]` : key;
+      const pos = settings.layout && settings.layout.pos;
+      if (pos && pos[oldKey]) { pos[groupKey(g)] = pos[oldKey]; delete pos[oldKey]; saveSettings(); }
+      changed();
+      Sound.add();
+      return true;
+    });
   }
 
   function removeQuest(g, q, li) {

@@ -44,7 +44,7 @@
     const poly = (a, b) => { mctx.beginPath(); mctx.moveTo(a[0][0], a[0][1]); for (const p of a) mctx.lineTo(p[0], p[1]); for (let i = b.length - 1; i >= 0; i--) mctx.lineTo(b[i][0], b[i][1]); mctx.closePath(); };
     const mid = top.map((p, i) => [p[0], (p[1] + bot[i][1]) / 2 + 0.4]);
     mctx.save();
-    mctx.translate(c.x, c.y); mctx.rotate(c.a);
+    mctx.translate(c.x, c.y); if (c.flip) mctx.scale(-1, 1); mctx.rotate(c.a);   // mirror keeps the light from above
     // dent around the cut (soft shadow)
     mctx.shadowColor = 'rgba(20, 8, 2, .45)'; mctx.shadowBlur = 3; mctx.shadowOffsetY = 1;
     // shadowed upper wall of the V
@@ -82,7 +82,8 @@
   function cut(x, y) {
     if (theme !== 'tavern') return splash(x, y);
     const c = {
-      x, y, a: -(Math.PI / 4) + rnd(-0.45, 0.45), len: rnd(70, 140), bow: rnd(-3, 3), w: rnd(3.4, 5.4),
+      x, y, a: -(Math.PI / 4) + rnd(-0.45, 0.45), flip: Math.random() < 0.5,   // flip: mirrored, leaning the other way
+      len: rnd(70, 140), bow: rnd(-3, 3), w: rnd(3.4, 5.4),
       jit: Array.from({ length: 27 }, () => rnd(-1, 1)),
       fibres: Array.from({ length: 5 + (Math.random() * 6 | 0) }, () => ({ i: 3 + (Math.random() * 20 | 0), side: Math.random() < 0.5 ? -1 : 1, len: rnd(3, 9), lift: rnd(1, 3.5), th: rnd(0.6, 1.2) })),
       skid: rnd(4, 14), skidDy: rnd(-1.5, 1.5),
@@ -90,7 +91,7 @@
     // wood chips fly off the cut
     for (let i = 0; i < 8; i++) {
       const ang = c.a + Math.PI / 2 + rnd(-0.8, 0.8) * (Math.random() < 0.5 ? 1 : -1), sp = rnd(1.5, 4);
-      parts.push({ x: x + rnd(-10, 10), y: y + rnd(-6, 6), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 2, life: 0, max: rnd(400, 800), size: rnd(1.2, 2.4), c: pick(['#e7b47a', '#c8874a', '#f6d4a0']), kind: 'dot', g: 0.22 });
+      parts.push({ x: x + rnd(-10, 10), y: y + rnd(-6, 6), vx: Math.cos(ang) * sp * (c.flip ? -1 : 1), vy: Math.sin(ang) * sp - 2, life: 0, max: rnd(400, 800), size: rnd(1.2, 2.4), c: pick(['#e7b47a', '#c8874a', '#f6d4a0']), kind: 'dot', g: 0.22 });
     }
     if (markHook) markHook(c);                       // the app pins the gouge into the scrolling board
     else { cuts.push(c); if (cuts.length > 400) cuts.shift(); drawCut(c); }
