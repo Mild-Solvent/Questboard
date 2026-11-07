@@ -28,9 +28,9 @@
 
     <section id="hero">
       <div class="hero-left">
-        <div class="rank-crest" id="rank-crest" aria-hidden="true"><span id="level-num">1</span></div>
+        <div class="crest-wrap" id="crest-wrap"><div class="rank-crest" id="rank-crest" aria-hidden="true"><span id="level-num">1</span></div></div>
         <div class="rank-text">
-          <div class="rank-title"><span id="rank-name">Tavern Squire</span></div>
+          <div class="rank-title"><span class="tier-pill" id="tier-name">Bronze</span><span id="rank-name">Tavern Squire</span></div>
           <div class="xp-row">
             <div class="xp-bar"><div class="xp-fill" id="xp-fill"></div><div class="xp-shine"></div></div>
             <div class="xp-label" id="xp-label">0 / 100 XP</div>
@@ -38,7 +38,7 @@
         </div>
       </div>
       <div class="hero-right">
-        <div class="stat"><div class="stat-num" id="stat-today">0</div><div class="stat-lbl">cleared today</div></div>
+        <div class="stat stat-today" id="stat-today-box" data-heat="0"><div class="stat-num" id="stat-today">0</div><div class="stat-lbl" id="stat-today-lbl">cleared today</div></div>
         <div class="stat"><div class="stat-num" id="stat-total">0</div><div class="stat-lbl">cleared total</div></div>
         <div class="stat"><div class="stat-num" id="stat-open">0</div><div class="stat-lbl">open quests</div></div>
       </div>
@@ -59,8 +59,8 @@
     <h2 class="sheet-title">Settings</h2>
 
     <h3 class="sheet-sub">Sync</h3>
-    <p class="sheet-help">Quests live on the devbox. Paste the sync address and the token once; the board then pulls on open and pushes every change.</p>
-    <label class="field"><span>Sync address</span><input id="set-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://devbox.tail20cc8f.ts.net/questboard" /></label>
+    <p class="sheet-help">Optional. Without sync the board lives only on this phone. To share quests with your PC, run your own Questboard sync server, then paste its address and token here once; the board pulls on open and pushes every change.</p>
+    <label class="field"><span>Sync address</span><input id="set-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://your-server/questboard" /></label>
     <label class="field"><span>Token</span><span class="field-row"><input id="set-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="paste the token" /><button type="button" class="mini" id="set-token-eye">show</button></span></label>
     <label class="field"><span>This device</span><input id="set-device" type="text" maxlength="40" autocomplete="off" placeholder="phone" /></label>
     <div class="sheet-row">
@@ -79,6 +79,7 @@
   </section>
 
   <div id="banner-layer" aria-live="polite"></div>
+  <div id="flash" aria-hidden="true"></div>
   <canvas id="fx" aria-hidden="true"></canvas>
 
   <template id="tpl-group">

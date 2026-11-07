@@ -78,11 +78,11 @@ async function waitHealth() {
     const box = await page.$eval('#boards', (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 6, y: r.bottom - 6 }; });
     await page.mouse.click(box.x, box.y);
     await sleep(200);
-    const marked = await page.$$eval('#boards .cut-layer .cut-mark', (els) => els.length);
-    check('tap on wood leaves a cut mark', marked === 1, marked);
+    const marked = await page.$eval('#boards .cut-layer .cut-bake', (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; });
+    check('tap on wood leaves a cut mark', marked > 20, marked);
     check('wood scrolls with the quests', (await page.$eval('#boards', (e) => getComputedStyle(e).backgroundAttachment)).includes('local'));
     const moved = await page.$eval('#boards', async (b) => {
-      const m = b.querySelector('.cut-mark');
+      const m = b.querySelector('.cut-layer');
       const pad = document.createElement('div'); pad.style.height = '900px'; b.appendChild(pad);   // starter board is too short to scroll
       const before = m.getBoundingClientRect().top;
       const want = Math.min(120, b.scrollHeight - b.clientHeight);
@@ -106,7 +106,7 @@ async function waitHealth() {
     // settings: test + save → first sync merges local starter edits with remote board
     await page.click('#btn-settings');
     await page.waitForSelector('#sheet:not([hidden])');
-    check('settings prefilled with devbox URL', (await page.inputValue('#set-url')).startsWith('https://devbox.'));
+    check('no sync address built in (fresh install)', (await page.inputValue('#set-url')) === '');
     await page.fill('#set-url', SYNC_URL);
     await page.fill('#set-token', 'wrong');
     await page.click('#set-test');
@@ -219,6 +219,31 @@ async function waitHealth() {
     check('edit: board rename survives a concurrent devbox edit', q6.includes('## Home [daily]') && !q6.includes('## Life') && /## Home \[daily\][^#]*Water plants/.test(q6), q6.replace(/\n/g, '⏎'));
     await page.screenshot({ path: path.join(outDir, 'phone-edit.png') });
     check('open quests grow the board (no inner scroll, 0.4.8)', await page.$eval('.board .quests:not(.done-list)', (e) => getComputedStyle(e).maxHeight === 'none'));
+
+    // 0.5.0: secret entries carry their own xp and do not count as cleared quests; heat and tiers
+    const g7 = await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } });
+    const prog7 = JSON.parse(await g7.text());
+    const nowIso = new Date().toISOString();
+    prog7.log.push({ text: 'Secret: Dragon egg', at: nowIso, device: 'pc', xp: 100, secret: true });
+    for (const t of ['Heat one', 'Heat two', 'Heat three']) prog7.log.push({ text: t, at: nowIso, device: 'pc' });
+    r = await fetch(`${SYNC_URL}/progress.json`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'If-Match': g7.headers.get('etag') }, body: JSON.stringify(prog7, null, 2) });
+    check('0.5.0: remote progress accepted', r.status === 200 || r.status === 201, `status ${r.status}`);
+    await page.evaluate(() => window.Sync.syncNow('test'));
+    await page.waitForFunction((n) => document.querySelector('#stat-total').textContent === String(n), prog7.log.filter((e) => !e.secret).length, { timeout: 8000 }).catch(() => {});
+    const quests7 = prog7.log.filter((e) => !e.secret);
+    const xp7 = prog7.log.reduce((n, e) => n + (Number(e.xp) || 25), 0);
+    let lvl = 1, rem = xp7; while (rem >= 100 + (lvl - 1) * 50) { rem -= 100 + (lvl - 1) * 50; lvl++; }
+    const hero7 = await page.evaluate(() => ({ total: document.querySelector('#stat-total').textContent, today: document.querySelector('#stat-today').textContent, lbl: document.querySelector('#stat-today-lbl').textContent, heat: document.querySelector('#stat-today-box').dataset.heat, xp: document.querySelector('#xp-label').textContent, level: document.querySelector('#level-num').textContent, tier: document.querySelector('#tier-name').textContent }));
+    check('0.5.0: cleared total skips secrets', hero7.total === String(quests7.length), JSON.stringify(hero7));
+    check('0.5.0: XP sums each entry (secret +100)', hero7.level === String(lvl) && hero7.xp === `${rem} / ${100 + (lvl - 1) * 50} XP`, `want L${lvl} ${rem}`);
+    const today7 = quests7.filter((e) => new Date(e.at).toDateString() === new Date().toDateString()).length;
+    check('0.5.0: heat label on cleared today', hero7.today === String(today7) && (today7 < 3 || hero7.lbl !== 'cleared today'), `${hero7.today} ${hero7.lbl} heat=${hero7.heat}`);
+    check('0.5.0: tier pill shown', /^(Bronze|Silver|Gold)$/.test(hero7.tier), hero7.tier);
+    await page.screenshot({ path: path.join(outDir, 'phone-050.png') });
+
+    // a tap on bare wood is baked into one canvas inside #boards
+    const bakeHas = await page.$eval('#boards .cut-bake', (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; });
+    check('0.5.0: sword cut baked into the wall canvas', bakeHas);
 
     // back button closes the sheet
     await page.click('#btn-settings');

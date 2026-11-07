@@ -223,14 +223,14 @@
     }
   }
 
-  function rain(count) {
+  function rain(count, colors) {
     // confetti from the top edge, used on level-up
     for (let i = 0; i < count; i++) {
       parts.push({
         x: rnd(0, W), y: rnd(-40, -5),
         vx: rnd(-1, 1), vy: rnd(1, 4),
         life: 0, max: rnd(1800, 3200),
-        size: rnd(3, 7), c: pick(palette[theme].burst), kind: 'shard',
+        size: rnd(3, 7), c: pick(colors || palette[theme].burst), kind: 'shard',
         g: 0.05, rot: rnd(0, Math.PI * 2), vr: rnd(-0.2, 0.2),
       });
     }
@@ -257,14 +257,23 @@
       if (p.life >= p.max) { parts.splice(i, 1); continue; }
       const u = p.life / p.max;
       p.vy += (p.g || 0) * k;
-      if (p.kind !== 'trail') { p.vx *= Math.pow(0.985, k); p.vy *= Math.pow(0.985, k); }
+      if (p.kind !== 'trail') { const f = p.kind === 'streak' ? 0.94 : 0.985; p.vx *= Math.pow(f, k); p.vy *= Math.pow(f, k); }
       p.x += p.vx * k; p.y += p.vy * k;
       if (p.rot !== undefined) p.rot += p.vr * k;
       const alpha = p.kind === 'trail' ? (1 - u) * 0.9 : (u < 0.7 ? 1 : 1 - (u - 0.7) / 0.3);
       fctx.globalAlpha = Math.max(0, alpha);
       fctx.fillStyle = p.c;
       fctx.shadowColor = p.c; fctx.shadowBlur = p.kind === 'trail' ? 0 : 6;
-      if (p.kind === 'shard') {
+      if (p.kind === 'star') {
+        const s = p.size * (u < 0.3 ? u / 0.3 : 1 - (u - 0.3) / 0.7);
+        fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.rot || 0);
+        fctx.beginPath();
+        for (let j = 0; j < 8; j++) { const rr = j % 2 ? s * 0.22 : s; const aa = (j * Math.PI) / 4; fctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr); }
+        fctx.closePath(); fctx.fill(); fctx.restore();
+      } else if (p.kind === 'streak') {
+        fctx.strokeStyle = p.c; fctx.lineWidth = p.size * (1 - u);
+        fctx.beginPath(); fctx.moveTo(p.x, p.y); fctx.lineTo(p.x - p.vx * 6, p.y - p.vy * 6); fctx.stroke();
+      } else if (p.kind === 'shard') {
         fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.rot);
         fctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
         fctx.restore();
@@ -286,10 +295,10 @@
       const r = rings[i];
       r.life += dt;
       if (r.life < 0) continue;
-      const u = r.life / 520;
+      const u = r.life / (r.dur || 520);
       if (u >= 1) { rings.splice(i, 1); continue; }
       fctx.globalAlpha = (1 - u) * 0.8;
-      fctx.strokeStyle = r.c; fctx.lineWidth = 3 * (1 - u) + 0.5;
+      fctx.strokeStyle = r.c; fctx.lineWidth = (r.w || 3) * (1 - u) + 0.5;
       fctx.beginPath(); fctx.arc(r.x, r.y, r.r + (r.max - r.r) * Math.sqrt(u), 0, Math.PI * 2); fctx.stroke();
     }
     fctx.globalAlpha = 1;
@@ -328,5 +337,28 @@
     drawCut({ ...c, x: size / 2, y: size / 2 }, canvas.getContext('2d'));
     return size;
   }
-  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, get theme() { return theme; } };
+  // twinkling stars around a point (rank crest, secrets)
+  function sparkle(x, y, opts = {}) {
+    const n = opts.count || 3, spread = opts.spread || 30, cols = opts.colors || palette[theme].burst;
+    for (let i = 0; i < n; i++) {
+      parts.push({ x: x + rnd(-spread, spread), y: y + rnd(-spread, spread), vx: rnd(-0.2, 0.2), vy: rnd(-0.5, -0.1), life: 0, max: rnd(500, 1100), size: rnd(3, opts.big ? 9 : 6), c: pick(cols), kind: 'star', g: 0, rot: rnd(0, 1), vr: rnd(-0.03, 0.03) });
+    }
+  }
+  // rising embers from a point (the "cleared today" fire)
+  function embers(x, y, opts = {}) {
+    const n = opts.count || 4, cols = opts.colors || ['#ffb347', '#ff6a2b', '#ffd36b'];
+    for (let i = 0; i < n; i++) {
+      parts.push({ x: x + rnd(-(opts.w || 30), opts.w || 30), y: y + rnd(-4, 4), vx: rnd(-0.3, 0.3), vy: -rnd(0.6, 1.8), life: 0, max: rnd(600, 1300), size: rnd(1.5, 3.5), c: pick(cols), kind: 'dot', g: -0.01 });
+    }
+  }
+  // level-up nova: stacked shockwaves and light rays from one point
+  function nova(x, y, cols) {
+    cols = cols || palette[theme].burst;
+    [0, 120, 260, 420].forEach((d, i) => rings.push({ x, y, r: 6, max: 260 + i * 160, life: -d, c: i % 2 ? '#ffffff' : cols[i % cols.length], w: 7 - i, dur: 900 }));
+    for (let i = 0; i < 48; i++) {
+      const ang = (i / 48) * Math.PI * 2 + rnd(-0.05, 0.05), sp = rnd(9, 16);
+      parts.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 0, max: rnd(500, 800), size: rnd(2, 4), c: pick(cols), kind: 'streak', g: 0 });
+    }
+  }
+  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, drawCutOn: (ctx, c) => drawCut(c, ctx), sparkle, embers, nova, get theme() { return theme; } };
 })();

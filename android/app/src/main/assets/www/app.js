@@ -9,7 +9,6 @@
 
   const XP_PER_QUEST = 25;
   const RELEASES_URL = 'https://github.com/Mild-Solvent/Questboard/releases/latest';
-  const DEFAULT_SYNC_URL = 'https://devbox.tail20cc8f.ts.net/questboard';
   const RANKS = {
     tavern: ['Tavern Squire', 'Road Wanderer', 'Hedge Knight', 'Guild Adventurer', 'Dragon Botherer', 'Realm Champion', 'Living Legend', 'Myth Incarnate'],
     abyss:  ['Shallow Shrimp', 'Reef Diver', 'Kelp Ranger', 'Trench Explorer', 'Kraken Wrangler', 'Tide Sovereign', 'Abyssal Legend', 'Leviathan'],
@@ -51,7 +50,42 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   function savePrefs() { api.setPrefs(prefs); }
 
   // ---------- XP / rank ----------
-  const xp = () => progress.log.length * XP_PER_QUEST;
+  // XP is the sum of each log entry's xp (quests 25, secrets their own); counts skip secrets (desktop 0.5.0)
+  const xp = () => progress.log.reduce((n, e) => n + (Number(e.xp) || XP_PER_QUEST), 0);
+  const questLog = () => progress.log.filter((e) => !e.secret);
+
+  // Rank tiers: every three levels the crest turns into a better metal or gem.
+  const TIERS = [
+    { name: 'Bronze', from: 1, a: '#ffd2a1', b: '#9a5320', glow: 'rgba(240,150,80,.55)' },
+    { name: 'Silver', from: 4, a: '#ffffff', b: '#8494a8', glow: 'rgba(220,235,255,.6)' },
+    { name: 'Gold', from: 7, a: '#fff4b0', b: '#c88a10', glow: 'rgba(255,205,60,.7)' },
+    { name: 'Emerald', from: 10, a: '#c4ffe0', b: '#0f8a4c', glow: 'rgba(60,230,140,.65)' },
+    { name: 'Sapphire', from: 13, a: '#cfe6ff', b: '#1f50c8', glow: 'rgba(80,150,255,.75)' },
+    { name: 'Ruby', from: 16, a: '#ffd0d6', b: '#b0142e', glow: 'rgba(255,60,90,.7)' },
+    { name: 'Amethyst', from: 19, a: '#f0dcff', b: '#7027b8', glow: 'rgba(180,90,255,.75)' },
+    { name: 'Diamond', from: 22, a: '#ffffff', b: '#6fd3ff', glow: 'rgba(190,240,255,.9)' },
+    { name: 'Mythic', from: 26, a: '#fff0b0', b: '#ff3fd0', glow: 'rgba(255,120,220,.9)' },
+  ];
+  const tierIndex = (level) => { let i = 0; TIERS.forEach((t, j) => { if (level >= t.from) i = j; }); return i; };
+  const tierColors = (t) => [t.a, t.b, '#ffffff', t.b, '#ffd36b'];
+  function applyTier(level) {
+    const i = tierIndex(level), t = TIERS[i], root = document.documentElement.style;
+    root.setProperty('--tier-a', t.a); root.setProperty('--tier-b', t.b); root.setProperty('--tier-glow', t.glow);
+    $('#hero').dataset.tier = t.name.toLowerCase();
+    $('#hero').style.setProperty('--tier-i', i);
+    $('#tier-name').textContent = t.name;
+    return i;
+  }
+
+  // "Cleared today" heats up the more you clear in one day.
+  const HEAT = [
+    { at: 0, lbl: 'cleared today' }, { at: 1, lbl: 'cleared today' }, { at: 3, lbl: 'on fire' },
+    { at: 5, lbl: 'blazing!' }, { at: 8, lbl: 'inferno!!' }, { at: 12, lbl: 'legendary day' },
+  ];
+  const heatFor = (n) => { let h = 0; HEAT.forEach((x, i) => { if (n >= x.at) h = i; }); return h; };
+  let lastToday = null, lastHeat = null;
+  const HEAT_COLORS = [null, ['#ffd36b', '#ffb347'], ['#ffb347', '#ff6a2b', '#ffd36b'], ['#ff6a2b', '#ff3b1f', '#ffd36b', '#fff1c2'],
+    ['#9be7ff', '#ffffff', '#5ab8ff', '#ffd36b'], ['#ff5fd2', '#b36bff', '#ffffff', '#ffd36b', '#5ab8ff']];
   const xpForLevel = (lvl) => 100 + (lvl - 1) * 50;
   function levelInfo(total) {
     let lvl = 1, rem = total;
@@ -70,11 +104,23 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const li = levelInfo(xp());
     $('#level-num').textContent = li.level;
     $('#rank-name').textContent = rankName(li.level);
+    applyTier(li.level);
     $('#xp-fill').style.width = `${Math.round((li.into / li.need) * 100)}%`;
     $('#xp-label').textContent = `${li.into} / ${li.need} XP`;
     const today = new Date().toDateString();
-    $('#stat-today').textContent = progress.log.filter((e) => new Date(e.at).toDateString() === today).length;
-    $('#stat-total').textContent = progress.log.length;
+    const n = questLog().filter((e) => new Date(e.at).toDateString() === today).length;
+    const heat = heatFor(n), box = $('#stat-today-box');
+    $('#stat-today').textContent = n;
+    box.dataset.heat = String(heat);
+    $('#stat-today-lbl').textContent = HEAT[heat].lbl;
+    if (lastToday !== null && n > lastToday) {
+      const num = $('#stat-today'); num.classList.remove('pop'); void num.offsetWidth; num.classList.add('pop');
+      const r = box.getBoundingClientRect();
+      FX.burst(r.left + r.width / 2, r.top + r.height / 2, { count: 16 + heat * 10, power: 0.5 + heat * 0.12, colors: HEAT_COLORS[heat] });
+      if (heat > lastHeat && heat >= 2) { setTimeout(() => { banner(HEAT[heat].lbl, `${n} quests cleared today`); Sound.heat && Sound.heat(); api.vibrate(60); }, 700); }
+    }
+    lastToday = n; lastHeat = heat;
+    $('#stat-total').textContent = questLog().length;
     $('#stat-open').textContent = doc.groups.reduce((n, g) => n + g.items.filter((i) => i.type === 'quest' && !doneNow(g, i)).length, 0);
   }
 
@@ -87,7 +133,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
   function inline(text) {
     const esc = text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-    return esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+    return esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?![*\w])/g, '$1<i>$2</i>').replace(/`(.+?)`/g, '<code>$1</code>');
   }
   function isFeatured(g) { return /^active\b/i.test(g.title); }
   // Daily boards ("## Life [daily]", desktop 0.4.6): their quests never move to Completed and are never
@@ -155,6 +201,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const scrollTop = boards.scrollTop;
     boards.innerHTML = '';
     boards.prepend(cutLayer);
+    cutLayer.after(secretLayer);
+    drawSecrets();
     const ordered = [...doc.groups].sort((a, b) => (isFeatured(b) ? 1 : 0) - (isFeatured(a) ? 1 : 0));
     ordered.forEach((g, i) => {
       const wrap = tplGroup.content.firstElementChild.cloneNode(true);
@@ -223,28 +271,59 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     renderHero();
   }
 
-  // Gouges live inside #boards, in content coordinates, so they scroll with the wood and the papers
-  // (same as desktop 0.4.5).
+  // Gouges live inside #boards, in content coordinates, so they scroll with the wood and the papers.
+  // All of them are baked into one canvas (desktop 0.5.0); the oldest go after MAX_CUTS.
+  const MAX_CUTS = 1500;
+  const cutMarks = [];
+  const bake = document.createElement('canvas');
+  bake.className = 'cut-bake';
+  cutLayer.appendChild(bake);
+  const bctx = bake.getContext('2d');
+  const secretLayer = document.createElement('div');
+  secretLayer.className = 'secret-layer';
+  function sizeBake() {
+    const w = boards.scrollWidth, h = boards.scrollHeight;
+    cutLayer.style.width = `${w}px`; cutLayer.style.height = `${h}px`;
+    if (bake.width >= w && bake.height >= h) return false;
+    bake.width = Math.ceil(Math.max(w, bake.width) / 256) * 256;
+    bake.height = Math.ceil(Math.max(h, bake.height) / 512) * 512;
+    return true;                                                   // resizing wiped it: redraw
+  }
+  function redrawCuts() { bctx.clearRect(0, 0, bake.width, bake.height); for (const c of cutMarks) FX.drawCutOn(bctx, c); }
+  function clearCuts() { cutMarks.length = 0; bctx.clearRect(0, 0, bake.width, bake.height); signCuts.length = 0; sctx.clearRect(0, 0, signBake.width, signBake.height); }
+  // The guild sign (the XP header) takes cuts too, on a canvas of its own.
+  const signCuts = [];
+  const signBake = document.createElement('canvas');
+  signBake.className = 'sign-cuts';
+  const sctx = signBake.getContext('2d');
+  function redrawSign() {
+    const hero = $('#hero');
+    if (signBake.parentNode !== hero) hero.prepend(signBake);
+    signBake.width = hero.clientWidth; signBake.height = hero.clientHeight;
+    for (const c of signCuts) FX.drawCutOn(sctx, c);
+  }
   FX.setMarkLayer((c) => {
+    const hr = $('#hero').getBoundingClientRect();
+    if (c.x >= hr.left && c.x <= hr.right && c.y >= hr.top && c.y <= hr.bottom) {
+      if (signBake.parentNode !== $('#hero')) redrawSign();
+      const m = Object.assign({}, c, { x: c.x - hr.left, y: c.y - hr.top, len: c.len * 0.75, w: c.w * 0.85 });
+      signCuts.push(m);
+      if (signCuts.length > 400) { signCuts.splice(0, 50); redrawSign(); } else FX.drawCutOn(sctx, m);
+      return;
+    }
     if (cutLayer.parentNode !== boards) boards.prepend(cutLayer);
     const r = boards.getBoundingClientRect();
-    const x = c.x - r.left - boards.clientLeft + boards.scrollLeft;
-    const y = c.y - r.top - boards.clientTop + boards.scrollTop;
-    const cv = document.createElement('canvas');
-    cv.className = 'cut-mark';
-    const size = FX.paintCut(cv, c);
-    cv.style.left = `${Math.round(x - size / 2)}px`;
-    cv.style.top = `${Math.round(y - size / 2)}px`;
-    cutLayer.style.width = `${boards.scrollWidth}px`;
-    cutLayer.style.height = `${boards.scrollHeight}px`;
-    cutLayer.appendChild(cv);
-    while (cutLayer.children.length > 80) cutLayer.firstChild.remove();
+    const m = Object.assign({}, c, { x: c.x - r.left - boards.clientLeft + boards.scrollLeft, y: c.y - r.top - boards.clientTop + boards.scrollTop });
+    cutMarks.push(m);
+    if (cutMarks.length > MAX_CUTS) { cutMarks.splice(0, 100); redrawCuts(); }
+    if (sizeBake()) redrawCuts(); else FX.drawCutOn(bctx, m);
   });
 
   // Tapping bare wood (or open water) leaves a mark: a sword cut in Tavern, a splash in Abyss.
   window.addEventListener('pointerdown', (e) => {
     const t = e.target;
-    if (!(t === boards || t === document.body || t.id === 'app')) return;
+    const onSign = !!t.closest('#hero') && !t.closest('button, .stat, .crest-wrap, .xp-bar');
+    if (!(onSign || t === boards || t === document.body || t.id === 'app')) return;
     Sound.unlock();
     if (prefs.theme === 'abyss') { FX.splash(e.clientX, e.clientY); Sound.splash && Sound.splash(); }
     else { FX.cut(e.clientX, e.clientY); Sound.cut && Sound.cut(); }
@@ -451,16 +530,138 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   }
 
   function levelUp(level) {
-    const name = rankName(level);
-    banner('Level up!', `${level} — ${name}`, true);
+    const ti = tierIndex(level), t = TIERS[ti], cols = tierColors(t);
+    const ascended = ti > tierIndex(level - 1);
+    banner(ascended ? `${t.name} rank!` : 'Level up!', `${level} — ${rankName(level)}`, true);
     Sound.levelUp();
-    api.vibrate(120);
-    FX.shake($('#app'), 600);
+    api.vibrate(ascended ? 260 : 120);
+    const app = $('#app');
+    app.classList.remove('quaking'); void app.offsetWidth; app.classList.add('quaking');
+    setTimeout(() => app.classList.remove('quaking'), 1100);
+    $$('.board-wrap').forEach((w) => { w.style.setProperty('--jolt-d', `${Math.random() * 160}ms`); w.style.setProperty('--jolt-r', `${(Math.random() * 2 - 1) * 4}deg`); w.classList.remove('jolt'); void w.offsetWidth; w.classList.add('jolt'); setTimeout(() => w.classList.remove('jolt'), 1200); });
+    const flash = $('#flash'); flash.style.setProperty('--flash', t.glow); flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+    const cr = $('#rank-crest').getBoundingClientRect();
+    const crest = $('#rank-crest'); crest.classList.remove('pulse', 'ascend'); void crest.offsetWidth; crest.classList.add(ascended ? 'ascend' : 'pulse');
     const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
-    FX.burst(cx, cy, { count: 140, power: 1.8, long: true });
-    setTimeout(() => FX.rain(120), 200);
-    setTimeout(() => FX.burst(cx * 0.5, cy * 0.7, { count: 50, power: 1.1 }), 350);
-    setTimeout(() => FX.burst(cx * 1.5, cy * 0.7, { count: 50, power: 1.1 }), 500);
+    FX.nova(cx, cy, cols);
+    FX.burst(cx, cy, { count: 160, power: 1.9, long: true, colors: cols });
+    FX.nova(cr.left + cr.width / 2, cr.top + cr.height / 2, cols);
+    setTimeout(() => FX.rain(ascended ? 240 : 150, cols), 200);
+    const shots = ascended ? 10 : 6;
+    for (let i = 0; i < shots; i++) {
+      setTimeout(() => {
+        const x = window.innerWidth * (0.12 + Math.random() * 0.76), y = window.innerHeight * (0.15 + Math.random() * 0.5);
+        FX.burst(x, y, { count: 55, power: 1.1, colors: cols });
+        FX.sparkle(x, y, { count: 8, spread: 50, colors: cols, big: true });
+        if (i % 2 === 0) Sound.add();
+      }, 300 + i * 190);
+    }
+  }
+
+  // ---------- secrets: little treasures hidden on the wall, on a random schedule (per device) ----------
+  const SECRET_KINDS = [
+    { id: 'coin', name: 'Lost gold coin', xp: 10, w: 34 },
+    { id: 'key', name: 'Rusty old key', xp: 20, w: 18 },
+    { id: 'potion', name: 'Forgotten potion', xp: 20, w: 18 },
+    { id: 'scroll', name: 'Tiny secret scroll', xp: 25, w: 12 },
+    { id: 'gem', name: 'Glittering gem', xp: 40, w: 10 },
+    { id: 'rune', name: 'Glowing rune stone', xp: 40, w: 6 },
+    { id: 'egg', name: 'Dragon egg', xp: 100, w: 2 },
+  ];
+  const SECRET_ART = {
+    coin: '<svg viewBox="0 0 24 24"><defs><radialGradient id="sc" cx="35%" cy="30%"><stop offset="0" stop-color="#fff7c8"/><stop offset=".5" stop-color="#f2b632"/><stop offset="1" stop-color="#8a5a0a"/></radialGradient></defs><ellipse cx="12" cy="12" rx="9" ry="9" fill="url(#sc)" stroke="#5a3a06" stroke-width="1"/><ellipse cx="12" cy="12" rx="6" ry="6" fill="none" stroke="#a8740e" stroke-width="1"/><path d="M12 8v8M10 10h4M10 14h4" stroke="#7a4e06" stroke-width="1.2"/></svg>',
+    key: '<svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="4" fill="none" stroke="#b08a52" stroke-width="2.2"/><path d="M11 12h10M17 12v3M20 12v2" stroke="#b08a52" stroke-width="2.2" stroke-linecap="round"/><circle cx="7" cy="12" r="4" fill="none" stroke="#5a3a16" stroke-width=".6"/></svg>',
+    potion: '<svg viewBox="0 0 24 24"><path d="M10 3h4v5l4 7a5 5 0 0 1-4.5 7h-3A5 5 0 0 1 6 15l4-7z" fill="#7a2dd6" fill-opacity=".85" stroke="#2a1040" stroke-width="1"/><path d="M8 15h8" stroke="#d9b3ff" stroke-width="1"/><circle cx="11" cy="17" r="1.2" fill="#f0ddff"/><rect x="9.5" y="2" width="5" height="2" rx="1" fill="#8a5a2a"/></svg>',
+    scroll: '<svg viewBox="0 0 24 24"><rect x="5" y="6" width="14" height="12" rx="2" fill="#f1dcae" stroke="#6b4a22" stroke-width="1"/><circle cx="5" cy="12" r="2.5" fill="#d9bf8a" stroke="#6b4a22" stroke-width="1"/><circle cx="19" cy="12" r="2.5" fill="#d9bf8a" stroke="#6b4a22" stroke-width="1"/><path d="M12 9v6" stroke="#b8321c" stroke-width="2"/></svg>',
+    gem: '<svg viewBox="0 0 24 24"><path d="M6 4h12l4 6-10 11L2 10z" fill="#38c8ff" stroke="#0a3a66" stroke-width="1"/><path d="M2 10h20M8 4l4 17M16 4l-4 17M6 4l2 6M18 4l-2 6" stroke="#bff0ff" stroke-width=".7" fill="none"/></svg>',
+    rune: '<svg viewBox="0 0 24 24"><path d="M5 18c-1-6 1-12 7-14 6 2 8 8 7 14-3 3-11 3-14 0z" fill="#6b6b72" stroke="#2c2c30" stroke-width="1"/><path d="M12 7v10M12 9l3 3M12 13l-3 3" stroke="#7df9ff" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    egg: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="13" rx="7" ry="9" fill="#c0392b" stroke="#4a0e08" stroke-width="1"/><path d="M7 10l3 2 2-3 2 3 3-2M6 15l3 1 3-2 3 2 3-1" stroke="#ffb347" stroke-width="1" fill="none"/><ellipse cx="9.5" cy="9" rx="1.5" ry="2.5" fill="#ff8a7a" opacity=".6"/></svg>',
+  };
+  const now = () => Date.now();
+  const rndIn = (a, b) => a + Math.random() * (b - a);
+  function secretsState() {
+    if (!prefs.secrets || typeof prefs.secrets !== 'object') prefs.secrets = {};
+    const s = prefs.secrets;
+    if (!Array.isArray(s.active)) s.active = [];
+    if (!s.next) s.next = now() + rndIn(3, 12) * 60e3;           // the very first one turns up soon
+    if (!s.found) s.found = 0;
+    return s;
+  }
+  function pickKind() {
+    const total = SECRET_KINDS.reduce((n, k) => n + k.w, 0);
+    let r = Math.random() * total;
+    for (const k of SECRET_KINDS) { r -= k.w; if (r <= 0) return k; }
+    return SECRET_KINDS[0];
+  }
+  function bareSpot() {
+    const br = boards.getBoundingClientRect();
+    const W = Math.max(boards.clientWidth, 300), H = Math.max(boards.scrollHeight, boards.clientHeight);
+    const rects = $$('.board-wrap', boards).map((w) => { const r = w.getBoundingClientRect(); return { l: r.left - br.left + boards.scrollLeft - 16, t: r.top - br.top + boards.scrollTop - 16, r: r.right - br.left + boards.scrollLeft + 16, b: r.bottom - br.top + boards.scrollTop + 16 }; });
+    for (let i = 0; i < 80; i++) {
+      const x = rndIn(8, W - 40), y = rndIn(20, H - 40);
+      if (!rects.some((q) => x + 28 > q.l && x < q.r && y + 28 > q.t && y < q.b)) return { x, y };
+    }
+    return null;
+  }
+  function spawnSecret() {
+    const s = secretsState(), spot = bareSpot();
+    if (!spot) return false;
+    const k = pickKind();
+    s.active.push({ id: `${now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind: k.id, x: Math.round(spot.x), y: Math.round(spot.y), until: now() + rndIn(2, 7) * 3600e3, tilt: Math.round(rndIn(-35, 35)) });
+    savePrefs();
+    return true;
+  }
+  function tickSecrets() {
+    const s = secretsState();
+    const before = s.active.length;
+    s.active = s.active.filter((x) => x.until > now());
+    if (now() >= s.next && s.active.length < 2) {
+      if (spawnSecret()) s.next = now() + rndIn(20, 110) * 60e3;    // the next one: somewhere between 20 min and 2 h
+    }
+    if (s.active.length !== before) savePrefs();
+    drawSecrets();
+  }
+  function drawSecrets() {
+    const s = secretsState();
+    secretLayer.innerHTML = '';
+    for (const it of s.active) {
+      const k = SECRET_KINDS.find((x) => x.id === it.kind) || SECRET_KINDS[0];
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = `secret secret-${k.id}`; el.title = '';
+      el.style.left = `${it.x}px`; el.style.top = `${it.y}px`;
+      el.style.setProperty('--tilt', `${it.tilt || 0}deg`);
+      el.style.setProperty('--glint-d', `${(Math.random() * 9).toFixed(1)}s`);
+      el.innerHTML = SECRET_ART[k.id];
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('click', (e) => { e.stopPropagation(); findSecret(it, k, el); });
+      secretLayer.appendChild(el);
+    }
+  }
+  function findSecret(it, k, el) {
+    const s = secretsState();
+    s.active = s.active.filter((x) => x.id !== it.id);
+    s.found += 1;
+    savePrefs();
+    const before = levelInfo(xp()).level;
+    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: Sync.device(), xp: k.xp, secret: true });
+    const after = levelInfo(xp()).level;
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    el.classList.add('found');
+    setTimeout(() => el.remove(), 600);
+    FX.burst(x, y, { count: 60, power: 1, colors: ['#fff4b0', '#ffd36b', '#ffffff', '#9be7ff'] });
+    FX.sparkle(x, y, { count: 14, spread: 40, colors: ['#ffffff', '#fff4b0', '#9be7ff'], big: true });
+    Sound.secret && Sound.secret();
+    api.vibrate(50);
+    floatText(x + 20, y, `+${k.xp} XP`);
+    banner('Secret found!', `${k.name} · +${k.xp} XP · ${s.found} found so far`);
+    persist(); renderHero();
+    if (after > before) setTimeout(() => levelUp(after), 900);
+  }
+
+  // the wall behind the sign uses the same planks as the board wall, lined up with it
+  function alignWood() {
+    const y = boards.getBoundingClientRect().top;
+    document.documentElement.style.setProperty('--wood-y', `${Math.round(y)}px`);
   }
 
   // ---------- ui helpers ----------
@@ -491,7 +692,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
 
   // ---------- theme / prefs ----------
   function applyTheme(name) {
-    if (prefs.theme !== name) cutLayer.innerHTML = '';
+    if (prefs.theme !== name) clearCuts();
     prefs.theme = name;
     document.documentElement.setAttribute('data-theme', name);
     FX.setTheme(name);
@@ -552,7 +753,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       doc = next; render();
       Sound.add();
       FX.burst(window.innerWidth / 2, 120, { count: 40, power: 0.9 });
-      toast('Board updated from the devbox.');
+      toast('Board updated from your sync server.');
     };
     if (busy) setTimeout(apply, 1400); else apply();
   });
@@ -562,6 +763,25 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   function startPolling() {
     clearInterval(pollTimer);
     pollTimer = setInterval(() => { if (document.visibilityState === 'visible') Sync.syncNow('poll'); }, 90 * 1000);
+    tickSecrets();
+    setInterval(() => { if (!editing) tickSecrets(); }, 30 * 1000);
+    // the crest sparkles in its tier colours, a hot day throws embers
+    setInterval(() => {
+      if (document.hidden) return;
+      const ti = tierIndex(levelInfo(xp()).level);
+      if (ti >= 1) {
+        const r = $('#rank-crest').getBoundingClientRect(), t = TIERS[ti];
+        FX.sparkle(r.left + r.width / 2, r.top + r.height / 2, { count: Math.min(5, ti), spread: 30, colors: tierColors(t), big: ti >= 6 });
+      }
+      const heat = Number($('#stat-today-box').dataset.heat);
+      if (heat >= 3) {
+        const r = $('#stat-today-box').getBoundingClientRect();
+        FX.embers(r.left + r.width / 2, r.top + 6, { count: heat * 2 - 3, w: r.width / 2 - 6, colors: HEAT_COLORS[heat] });
+      }
+    }, 900);
+    if (window.ResizeObserver) new ResizeObserver(() => { alignWood(); if (signBake.parentNode) redrawSign(); }).observe($('#hero'));
+    window.addEventListener('resize', alignWood);
+    alignWood();
     // daily ticks expire on their own: redraw when one flips, and keep the "resets in" labels fresh
     let dailyStamp = '';
     setInterval(() => {
@@ -580,12 +800,12 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   // ---------- settings sheet ----------
   const sheet = $('#sheet'), backdrop = $('#sheet-backdrop');
   function openSheet() {
-    $('#set-url').value = prefs.syncUrl || DEFAULT_SYNC_URL;
+    $('#set-url').value = prefs.syncUrl || '';      // nothing built in: everyone points it at their own server
     $('#set-token').value = prefs.token || '';
     $('#set-device').value = prefs.device || defaultDevice();
     const s = Sync.getStatus();
     setSheetStatus(s.state === 'error' ? 'err' : s.state === 'ok' ? 'ok' : '', s.state === 'unset' ? '' : s.message);
-    $('#set-about').textContent = `Questboard ${info.version || 'dev'} for Android · quests sync through the devbox · XP ${xp()} (${progress.log.length} cleared)`;
+    $('#set-about').textContent = `Questboard ${info.version || 'dev'} for Android · ${prefs.syncUrl && prefs.token ? 'syncing with your server' : 'sync is off'} · XP ${xp()} (${progress.log.length} cleared)`;
     sheet.hidden = false; backdrop.hidden = false;
   }
   function closeSheet() { sheet.hidden = true; backdrop.hidden = true; }
@@ -636,7 +856,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       if (!Sync.isConfigured()) { setSheetStatus('', 'Saved. Sync is off until both the address and the token are filled in.'); return; }
       setSheetStatus('', 'Saved. Syncing…');
       const r = await Sync.syncNow('settings');
-      setSheetStatus(r.ok ? 'ok' : 'err', r.ok ? (r.changed ? 'Synced. Board updated from the devbox.' : 'Synced.') : `Sync failed: ${r.error}`);
+      setSheetStatus(r.ok ? 'ok' : 'err', r.ok ? (r.changed ? 'Synced. Board updated from the server.' : 'Synced.') : `Sync failed: ${r.error}`);
       if (r.ok) { startPolling(); setTimeout(closeSheet, 900); }
     });
     $('#set-reset-xp').addEventListener('click', () => {

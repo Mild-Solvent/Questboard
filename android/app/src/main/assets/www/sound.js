@@ -45,6 +45,25 @@
     src.start(now);
   }
 
+  // Real blade-on-wood recordings for the sword cuts: one picked at random each time,
+  // slightly re-pitched so a row of cuts never sounds copy-pasted.
+  const SFX_BASE = 'sfx/';
+  const CUT_SAMPLES = ['axe-1', 'axe-2', 'axe-3a', 'axe-3b', 'axe-4', 'knife-4a', 'knife-4b', 'sword-3'];
+  const cutPool = CUT_SAMPLES.map((n) => { const a = new Audio(`${SFX_BASE}cut/${n}.ogg`); a.preload = 'auto'; return a; });
+  let lastCut = -1;
+  function playCut() {
+    const ready = cutPool.filter((a) => a.readyState >= 2);
+    if (!ready.length) return false;
+    let i; do { i = (Math.random() * cutPool.length) | 0; } while (cutPool.length > 1 && i === lastCut);
+    lastCut = i;
+    const a = (cutPool[i].readyState >= 2 ? cutPool[i] : ready[0]).cloneNode();
+    a.volume = 0.55 + Math.random() * 0.15;
+    a.preservesPitch = false;
+    a.playbackRate = 0.92 + Math.random() * 0.16;
+    a.play().catch(() => {});
+    return true;
+  }
+
   const S = {
     get enabled() { return enabled; },
     set enabled(v) { enabled = !!v; if (enabled) ensure(); },
@@ -69,7 +88,8 @@
     },
     cut() {
       if (!enabled) return;
-      // the blade's swish and ring (the original cut sound)...
+      if (playCut()) return;
+      // fallback until the recordings have loaded: the synthesized swish and knock
       noise({ dur: 0.09, gain: 0.2, hp: 3500 });
       tone({ freq: 3200, type: 'sine', dur: 0.16, gain: 0.1, slide: -1400 });
       // ...then the bite into the plank: a dull knock with a few short wooden body modes.
@@ -94,6 +114,18 @@
       const theme = (window.FX && window.FX.theme) || 'tavern';
       if (theme === 'abyss') { tone({ freq: 900, type: 'sine', dur: 0.12, gain: 0.25, slide: -300 }); tone({ freq: 1400, type: 'sine', t0: 0.08, dur: 0.2, gain: 0.15 }); return; }
       [0, 0.13].forEach((t) => { noise({ t0: t, dur: 0.07, gain: 0.35, hp: 900 }); tone({ freq: 140, type: 'square', t0: t, dur: 0.09, gain: 0.25, slide: -60 }); tone({ freq: 2400, type: 'sine', t0: t, dur: 0.05, gain: 0.08 }); });
+    },
+    secret() {
+      if (!enabled) return;
+      [783.99, 987.77, 1174.66, 1567.98, 1975.53].forEach((f, i) => tone({ freq: f, type: 'sine', t0: i * 0.06, dur: 0.5, gain: 0.22 }));
+      tone({ freq: 2637, type: 'triangle', t0: 0.32, dur: 0.6, gain: 0.08 });
+      noise({ t0: 0.02, dur: 0.4, gain: 0.05, hp: 6000 });
+    },
+    heat() {
+      if (!enabled) return;
+      noise({ dur: 0.35, gain: 0.18, bp: 500, q: 0.7 });
+      tone({ freq: 220, type: 'sawtooth', dur: 0.3, gain: 0.05, slide: 220 });
+      tone({ freq: 880, type: 'triangle', t0: 0.12, dur: 0.25, gain: 0.12, slide: 300 });
     },
     undo() { if (!enabled) return; tone({ freq: 440, type: 'triangle', dur: 0.2, gain: 0.25, slide: -220 }); },
     add() { if (!enabled) return; tone({ freq: 880, type: 'sine', dur: 0.12, gain: 0.25 }); tone({ freq: 1320, type: 'sine', t0: 0.06, dur: 0.15, gain: 0.2 }); },

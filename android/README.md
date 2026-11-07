@@ -15,9 +15,11 @@ full-screen WebView running the shared renderer (`styles.css`, `fx.js`,
    Files app the first time; allow it, then **Install**. Play Protect may show
    "unknown developer": choose *Install anyway*. (The APK is signed with the
    project's own key, not a Play Store key.)
-3. Open Questboard, tap the gear (⚙) → paste the devbox token → **Save & sync**.
-   The sync address is prefilled with the devbox endpoint. The token is in
-   `~/questboard-data/token` on the devbox; the same token works on the PC.
+3. The board works on its own, offline. To share quests with your PC, run your
+   own sync server (`sync-server/` in this repo), then tap the gear (⚙), paste
+   its address and token, and tap **Save & sync**. Nothing is prefilled: every
+   install starts with sync off, so a shared APK never points at anyone else's
+   board.
 
 Updates: install a newer APK over the old one; data and settings stay. The gear
 sheet has a "Check for updates" button that opens the releases page.
@@ -29,11 +31,12 @@ sheet has a "Check for updates" button that opens the releases page.
 - `+ new quest` adds one to that board. Tap × twice to remove a quest.
 - Title bar: theme toggle (Tavern / Abyss), sound, sync now, settings.
 - The board syncs on open, when you come back to the app, every 90 s while it
-  is open, and about 2 s after every change. Edits made on the devbox (by
-  Claude) or on the PC appear with a toast "Board updated from the devbox".
+  is open, and about 2 s after every change. Edits made on the server (for
+  example by an agent) or on the PC appear with a toast "Board updated from
+  your sync server".
   Conflicts are merged quest by quest (shared `merge.js`), so completing a
   quest on the phone while the file is edited elsewhere keeps both changes.
-- XP = 25 per entry in the shared `progress.json` log, level n needs
+- XP = the sum of each `progress.json` log entry's `xp` (25 for a quest; secrets carry their own and don't count as cleared quests), level n needs
   100 + 50·(n−1). The log is shared, so the level is the same on every device.
 
 ## Build
