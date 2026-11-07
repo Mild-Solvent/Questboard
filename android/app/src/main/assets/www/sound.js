@@ -48,7 +48,8 @@
   // Real blade-on-wood recordings for the sword cuts: one picked at random each time,
   // slightly re-pitched so a row of cuts never sounds copy-pasted.
   const SFX_BASE = 'sfx/';
-  const CUT_SAMPLES = ['axe-1', 'axe-2', 'axe-3a', 'axe-3b', 'axe-4', 'knife-4a', 'knife-4b', 'sword-3'];
+  // single hits cut out of the recordings (one click = one hit)
+  const CUT_SAMPLES = ['axe-1', 'axe-2', 'axe-3a', 'axe-3b', 'axe-4', 'knife-4a-1', 'knife-4a-2', 'knife-4a-3', 'knife-4b-1', 'knife-4b-2', 'knife-4b-3', 'knife-4b-4', 'knife-4b-5', 'knife-4b-6', 'sword-3'];
   const cutPool = CUT_SAMPLES.map((n) => { const a = new Audio(`${SFX_BASE}cut/${n}.ogg`); a.preload = 'auto'; return a; });
   let lastCut = -1;
   function playCut() {
@@ -120,6 +121,30 @@
       [783.99, 987.77, 1174.66, 1567.98, 1975.53].forEach((f, i) => tone({ freq: f, type: 'sine', t0: i * 0.06, dur: 0.5, gain: 0.22 }));
       tone({ freq: 2637, type: 'triangle', t0: 0.32, dur: 0.6, gain: 0.08 });
       noise({ t0: 0.02, dur: 0.4, gain: 0.05, hp: 6000 });
+    },
+    cast() {
+      if (!enabled) return;
+      [659.25, 880, 1318.5, 1760].forEach((f, i) => tone({ freq: f, type: 'sine', t0: i * 0.05, dur: 0.45, gain: 0.16, slide: 30 }));
+      noise({ dur: 0.5, gain: 0.05, hp: 5000 });
+    },
+    draw() { if (!enabled) return; tone({ freq: 1400 + Math.random() * 600, type: 'sine', dur: 0.05, gain: 0.025 }); },
+    fizzle() { if (!enabled) return; noise({ dur: 0.25, gain: 0.12, hp: 2500 }); tone({ freq: 500, type: 'sawtooth', dur: 0.25, gain: 0.04, slide: -380 }); },
+    thunder() {
+      if (!enabled) return;
+      noise({ dur: 0.08, gain: 0.5, hp: 1500 });
+      noise({ t0: 0.02, dur: 1.4, gain: 0.45, bp: 110, q: 0.6 });
+      noise({ t0: 0.25, dur: 1.1, gain: 0.25, bp: 70, q: 0.5 });
+    },
+    boom() {
+      if (!enabled) return;
+      tone({ freq: 90, type: 'sine', dur: 0.9, gain: 0.6, slide: -55 });
+      noise({ dur: 0.9, gain: 0.4, bp: 180, q: 0.5 });
+      noise({ dur: 0.15, gain: 0.3, hp: 2000 });
+    },
+    purify() {
+      if (!enabled) return;
+      [523.25, 783.99, 1046.5].forEach((f, i) => tone({ freq: f, type: 'triangle', t0: i * 0.08, dur: 0.6, gain: 0.18 }));
+      noise({ dur: 0.6, gain: 0.06, hp: 4000 });
     },
     heat() {
       if (!enabled) return;

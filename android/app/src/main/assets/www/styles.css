@@ -440,7 +440,9 @@ input { user-select: text; }
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 260' preserveAspectRatio='none'%3E%3Cpath d='M0 260 L0 200 Q60 150 110 190 L150 120 Q170 90 190 140 L240 180 Q300 110 340 170 L400 200 Q460 120 520 190 L560 110 Q575 60 600 100 L640 180 Q720 140 760 200 L820 150 Q880 90 930 170 L980 200 Q1040 130 1090 180 L1140 140 Q1180 110 1200 170 L1200 260 Z' fill='%23062233'/%3E%3Cpath d='M0 260 L0 230 Q80 200 140 225 L200 210 Q280 180 330 220 L420 235 Q500 190 560 230 L660 240 Q740 205 800 235 L900 225 Q980 190 1040 230 L1200 235 L1200 260 Z' fill='%23041826'/%3E%3C/svg%3E") bottom / 100% 260px no-repeat,
     radial-gradient(1000px 700px at 50% -20%, #0e5f80 0%, transparent 60%),
     radial-gradient(900px 500px at 0% 100%, #052a45 0%, transparent 60%),
-    linear-gradient(180deg, #0a3650 0%, #04182b 50%, #03101f 100%);
+    linear-gradient(180deg, rgba(10, 54, 80, .45) 0%, rgba(4, 24, 43, .52) 50%, rgba(3, 16, 31, .7) 100%),
+    url("tex/abyss.webp") 0 0 / 640px auto repeat,
+    #03101f;
 }
 /* light shafts */
 :root[data-theme="abyss"] body::before {
@@ -630,15 +632,21 @@ input { user-select: text; }
 :root[data-theme="abyss"] .secret { filter: drop-shadow(0 0 4px rgba(60,240,255,.5)) brightness(.9); }
 
 /* ---------- one continuous wall, and the guild sign ---------- */
+/* wall textures: pick one with the "wall" button in the footer */
+:root[data-theme="tavern"] { --wall-img: url("tex/planks.webp"); --wall-size: 640px auto; --wall-tint: rgba(40, 18, 6, .16); }
+:root[data-theme="tavern"][data-wall="weathered"] { --wall-img: url("tex/weathered.webp"); --wall-tint: rgba(40, 18, 6, .22); }
+:root[data-theme="tavern"][data-wall="cracked"] { --wall-img: url("tex/cracked.webp"); --wall-tint: rgba(40, 18, 6, .10); }
+:root[data-theme="tavern"][data-wall="charred"] { --wall-img: url("tex/charred.webp"); --wall-tint: rgba(255, 150, 60, .04); }
+:root[data-theme="tavern"][data-wall="classic"] { --wall-img: url("wood.png"); --wall-size: 1024px 600px; --wall-tint: rgba(40, 18, 6, .30); }
 :root[data-theme="tavern"] body {
   background:
-    linear-gradient(rgba(40, 18, 6, .30), rgba(40, 18, 6, .30)),
-    url("wood.png") 0 var(--wood-y, 150px) / 1024px 600px repeat,
+    linear-gradient(var(--wall-tint), var(--wall-tint)),
+    var(--wall-img) 0 var(--wood-y, 150px) / var(--wall-size) repeat,
     #6a3a1a;
 }
 :root[data-theme="tavern"] #boards {
   margin: 0; border-radius: 0; box-shadow: none;
-  background: linear-gradient(rgba(40, 18, 6, .30), rgba(40, 18, 6, .30)), url("wood.png") 0 0 / 1024px 600px repeat, #6a3a1a;
+  background: linear-gradient(var(--wall-tint), var(--wall-tint)), var(--wall-img) 0 0 / var(--wall-size) repeat, #6a3a1a;
   background-attachment: local, local, local;
 }
 /* torchlight and vignette sit over the whole room, so nothing has its own lighting seam */
@@ -648,31 +656,41 @@ input { user-select: text; }
               radial-gradient(130% 100% at 50% 40%, transparent 60%, rgba(10, 4, 1, .55) 100%);
 }
 :root[data-theme="tavern"] #hero {
-  position: relative; z-index: 2; margin: 18px 22px -10px; padding: 14px 26px; border-radius: 10px;
-  background:
-    radial-gradient(4px 4px at 14px 14px, #c9b08a 40%, #2a1a0c 60%, transparent 70%),
-    radial-gradient(4px 4px at calc(100% - 14px) 14px, #c9b08a 40%, #2a1a0c 60%, transparent 70%),
-    radial-gradient(4px 4px at 14px calc(100% - 14px), #c9b08a 40%, #2a1a0c 60%, transparent 70%),
-    radial-gradient(4px 4px at calc(100% - 14px) calc(100% - 14px), #c9b08a 40%, #2a1a0c 60%, transparent 70%),
-    linear-gradient(180deg, rgba(255, 220, 160, .10), rgba(0, 0, 0, .25)),
-    linear-gradient(rgba(36, 16, 6, .55), rgba(36, 16, 6, .55)),
-    url("wood.png") 0 -120px / 760px 445px repeat-x,
-    #4a2812;
-  box-shadow: inset 0 2px 0 rgba(255, 220, 160, .25), inset 0 -3px 0 rgba(0, 0, 0, .45), inset 0 0 0 2px #1a0d06, inset 0 0 0 4px rgba(120, 72, 34, .8),
-              0 14px 22px rgba(0, 0, 0, .55), 0 4px 6px rgba(0, 0, 0, .5);
+  /* one wooden plank in a weathered stone-grey rim, with cut corners and notched sides */
+  --sign: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% 38%, calc(100% - 9px) 50%, 100% 62%, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 62%, 9px 50%, 0 38%, 0 18px);
+  position: relative; z-index: 2; margin: 14px 22px -10px; padding: 16px 30px; border-radius: 0;
+  background: none; box-shadow: none;
+  filter: drop-shadow(0 12px 14px rgba(0, 0, 0, .6)) drop-shadow(0 3px 3px rgba(0, 0, 0, .5));
 }
-/* chains the sign hangs from */
 :root[data-theme="tavern"] #hero::before, :root[data-theme="tavern"] #hero::after {
-  content: ''; position: absolute; top: -18px; width: 8px; height: 18px; z-index: -1;
-  background: repeating-linear-gradient(180deg, #8d8d94 0 3px, #3a3a40 3px 4px, #b9b9c0 4px 6px, #3a3a40 6px 7px);
-  border-radius: 3px; box-shadow: 0 2px 3px rgba(0,0,0,.6);
+  content: ''; position: absolute; z-index: 0; pointer-events: none; clip-path: var(--sign);
+  width: auto; height: auto; top: auto; left: auto; right: auto; border-radius: 0; box-shadow: none;
 }
-:root[data-theme="tavern"] #hero::before { left: 12%; }
-:root[data-theme="tavern"] #hero::after { right: 12%; }
-#hero > .hero-left, #hero > .hero-right { position: relative; z-index: 1; }
+/* the rim: rough grey stone/iron */
+:root[data-theme="tavern"] #hero::before {
+  inset: 0;
+  background:
+    radial-gradient(2px 2px at 12% 30%, rgba(255,255,255,.35), transparent 60%), radial-gradient(2px 2px at 47% 8%, rgba(0,0,0,.4), transparent 60%),
+    radial-gradient(3px 2px at 81% 92%, rgba(255,255,255,.3), transparent 60%), radial-gradient(2px 3px at 96% 44%, rgba(0,0,0,.35), transparent 60%),
+    repeating-linear-gradient(37deg, rgba(255,255,255,.06) 0 2px, transparent 2px 5px),
+    repeating-linear-gradient(-61deg, rgba(0,0,0,.10) 0 1px, transparent 1px 4px),
+    linear-gradient(160deg, #b9b6ae 0%, #8c8984 22%, #a8a59e 40%, #6f6c67 63%, #96938c 80%, #5f5c58 100%);
+}
+/* the plank: weathered red-brown wood */
+:root[data-theme="tavern"] #hero::after {
+  inset: 7px; z-index: 0;
+  background:
+    radial-gradient(120% 140% at 50% 50%, transparent 55%, rgba(30, 10, 2, .55) 100%),
+    linear-gradient(180deg, rgba(255, 200, 150, .10), rgba(0, 0, 0, .22)),
+    linear-gradient(rgba(130, 44, 14, .30), rgba(130, 44, 14, .30)),
+    url("tex/weathered.webp") -40px -260px / 520px auto repeat,
+    #7a3a1a;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.6);
+}
+#hero > .hero-left, #hero > .hero-right { position: relative; z-index: 2; }
 :root[data-theme="tavern"] .stat { background: rgba(20, 9, 3, .82); }
 :root[data-theme="abyss"] .board.daily .board-count { width: auto; min-width: 54px; padding: 0 16px; }
-.sign-cuts { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0; border-radius: inherit; }
+.sign-cuts { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; clip-path: inset(7px); }
 :root[data-theme="abyss"] .sign-cuts { display: none; }
 
 /* ---------- the reset ritual ---------- */
@@ -681,3 +699,82 @@ input { user-select: text; }
 .ritual .ritual-btns { display: flex; gap: 8px; }
 .ritual .btn.danger { background: #8a1c12; color: #fff; }
 .ritual .ritual-input { width: 100%; margin: 4px 0 10px; padding: 8px 10px; font: 600 16px var(--font-body); letter-spacing: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,.3); background: rgba(0,0,0,.3); color: var(--text); user-select: text; }
+
+/* ---------- magic ---------- */
+#magic-layer { position: fixed; inset: 0; pointer-events: none; z-index: 48; overflow: hidden; }
+.stroke-svg, .bolt-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stroke-svg polyline { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px currentColor) drop-shadow(0 0 12px #fff8); opacity: .95; }
+.stroke-svg.cast polyline { animation: stroke-cast .6s ease-out forwards; }
+.stroke-svg.fizzle polyline { animation: stroke-fizzle .6s ease-in forwards; }
+@keyframes stroke-cast { to { stroke-width: 12; opacity: 0; } }
+@keyframes stroke-fizzle { to { stroke: #777 !important; opacity: 0; transform: translateY(8px); } }
+html.casting, html.casting * { cursor: crosshair !important; }
+.bolt-svg polyline { fill: none; stroke: #fff; stroke-linejoin: round; filter: drop-shadow(0 0 6px #9fd0ff) drop-shadow(0 0 18px #6fb4ff); animation: bolt .5s steps(5) forwards; }
+.bolt-svg .main { stroke-width: 4; } .bolt-svg .branch { stroke-width: 1.6; }
+@keyframes bolt { 0% { opacity: 1; } 20% { opacity: .2; } 40% { opacity: 1; } 70% { opacity: .5; } 100% { opacity: 0; } }
+.meteor { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%; background: radial-gradient(circle at 40% 40%, #fff 0, #ffd36b 25%, #ff6a2b 55%, rgba(255,60,20,0) 72%); filter: drop-shadow(0 0 16px #ff6a2b); }
+.rune-circle { position: absolute; transform: translate(-50%, -50%); color: var(--rc); animation: rc-life var(--life, 3.8s) ease-in-out forwards; }
+.rune-circle svg { width: 100%; height: 100%; overflow: visible; animation: rc-spin 9s linear infinite; filter: drop-shadow(0 0 6px var(--rc)) drop-shadow(0 0 14px var(--rc)); }
+.rune-circle .rc-draw { fill: none; stroke: currentColor; stroke-width: .9; stroke-dasharray: 320; stroke-dashoffset: 320; animation: rc-draw 1.1s ease-out forwards; }
+.rune-circle .rc-runes { fill: currentColor; font: 6px serif; letter-spacing: 1.8px; opacity: 0; animation: rc-fade .8s .7s forwards; }
+@keyframes rc-draw { to { stroke-dashoffset: 0; } }
+@keyframes rc-fade { to { opacity: 1; } }
+@keyframes rc-spin { to { transform: rotate(360deg); } }
+@keyframes rc-life { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.7); } 10% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15); } }
+html.raining #boards { filter: saturate(.85) brightness(.92); transition: filter 1s; }
+
+/* enchanted quest */
+.quest.enchanted { border-radius: 8px; box-shadow: 0 0 0 1px rgba(197,140,255,.7), 0 0 14px rgba(197,140,255,.55); background: linear-gradient(90deg, rgba(197,140,255,.16), rgba(255,211,107,.08)); animation: enchant 2.4s ease-in-out infinite; }
+.quest.enchanted .rune { box-shadow: 0 0 10px #c58cff; }
+@keyframes enchant { 50% { box-shadow: 0 0 0 1px rgba(255,211,107,.8), 0 0 20px rgba(197,140,255,.8); } }
+.quest .enchant-btn { position: absolute; right: 54px; top: 6px; width: 20px; height: 20px; border-radius: 6px; border: none; background: rgba(120,60,200,.25); color: #6a2bb0; font-size: 13px; line-height: 20px; opacity: 0; transition: opacity .15s; }
+.quest:hover .enchant-btn { opacity: .8; }
+.quest .enchant-btn:hover { opacity: 1; background: rgba(150,80,230,.7); color: #fff; }
+:root[data-theme="abyss"] .quest .enchant-btn { color: #e6d0ff; }
+
+/* corruption: rot, then something worse */
+.quest.corrupt-1 .quest-text { text-shadow: 0 0 6px rgba(120,40,160,.35); }
+.quest.corrupt-1 .rune { box-shadow: inset 0 0 6px rgba(110,30,150,.6); }
+.quest.corrupt-2 { background: radial-gradient(120% 140% at 0% 50%, rgba(90,20,120,.18), transparent 60%); border-radius: 8px; }
+.quest.corrupt-2 .quest-text { color: #4a1660; text-shadow: 0 0 8px rgba(140,40,190,.45); animation: rot 3.5s ease-in-out infinite; }
+.quest.corrupt-2 .rune { border-color: #5a1a78 !important; box-shadow: inset 0 0 8px rgba(110,30,150,.8), 0 0 6px rgba(140,40,190,.5); }
+.quest.corrupt-3 { background: radial-gradient(130% 160% at 0% 50%, rgba(60,0,80,.32), transparent 65%); border-radius: 8px; animation: lurk 2.2s ease-in-out infinite; }
+.quest.corrupt-3 .quest-text { color: #3a0a4a; font-weight: 600; text-shadow: 0 0 10px rgba(170,30,200,.6); }
+.quest.corrupt-3 .quest-text::after { content: ''; display: inline-block; width: 18px; height: 7px; margin-left: 8px; vertical-align: middle; background: radial-gradient(circle at 25% 50%, #ff2a2a 0 2px, transparent 3px), radial-gradient(circle at 75% 50%, #ff2a2a 0 2px, transparent 3px); filter: drop-shadow(0 0 3px #ff2a2a); animation: blinkeyes 4s infinite; }
+.quest.corrupt-3 .rune { border-color: #2a0038 !important; background: radial-gradient(circle, #7a1aa0, #2a0038) !important; box-shadow: 0 0 10px rgba(170,30,200,.8); }
+@keyframes rot { 50% { letter-spacing: .4px; filter: blur(.2px); } }
+@keyframes lurk { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1.5px); } }
+@keyframes blinkeyes { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+:root[data-theme="abyss"] .quest.corrupt-2 .quest-text, :root[data-theme="abyss"] .quest.corrupt-3 .quest-text { color: #e6b0ff; }
+
+/* secrets: familiars peek out */
+.secret-fam .peek { font-size: 22px; line-height: 26px; display: block; filter: saturate(.7); animation: peek 5s ease-in-out infinite; }
+@keyframes peek { 0%, 100% { transform: translateY(6px); } 40%, 60% { transform: translateY(0); } }
+
+/* spellbook */
+.spellbook .spell-list { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
+.spellbook .spell-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 12px; align-items: center; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,.22); }
+.spellbook .spell-list li small { grid-column: 1 / -1; opacity: .8; }
+.spellbook .spell-list li.locked { opacity: .5; }
+.spellbook .spell-list li.known b { color: var(--accent); }
+.spellbook .req { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .8; }
+.spellbook .spell-list li .btn { grid-column: 3; grid-row: 1; padding: 2px 12px; min-width: 52px; font-size: 12px; line-height: 1.6; }
+.spellbook .spell-list li .btn:not(.on) { background: rgba(255,255,255,.08); color: var(--text-dim); box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+.spellbook-wrap, .garden-wrap { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0,0,0,.55); }
+
+/* garden */
+.garden-card { width: min(760px, 94vw); }
+.garden-scene { position: relative; height: 340px; border-radius: 10px; overflow: hidden; margin: 10px 0;
+  background: radial-gradient(60px 60px at 85% 18%, #fff6c8, rgba(255,246,200,0) 70%), linear-gradient(180deg, #8fd0ff 0%, #c8ecff 40%, #7fc46a 41%, #5aa04a 70%, #3f7f36 100%); }
+html[data-night] .garden-scene { background: radial-gradient(40px 40px at 82% 18%, #f4f1ff, rgba(244,241,255,0) 70%), linear-gradient(180deg, #0c1636 0%, #23305e 40%, #2f5a32 41%, #22472a 70%, #163220 100%); }
+.garden-pond { position: absolute; left: 8%; top: 62%; width: 30%; height: 18%; border-radius: 50%; background: radial-gradient(ellipse at 40% 35%, #bfe8ff, #4fa3d9 60%, #2c6f9f); box-shadow: inset 0 3px 8px rgba(0,0,0,.25); }
+.garden-flowers i { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--h), 80%, 70%); box-shadow: 0 0 0 2px hsl(var(--h), 70%, 55%); }
+.pet { position: absolute; font-size: 34px; transform: translate(-50%, -100%); transition: left 2.4s ease-in-out, top 2.4s ease-in-out; cursor: pointer; filter: drop-shadow(0 4px 2px rgba(0,0,0,.3)); pointer-events: auto; user-select: none; }
+.pet.flip { transform: translate(-50%, -100%) scaleX(-1); }
+.pet.hop { animation: hop .5s ease-out; }
+@keyframes hop { 40% { margin-top: -22px; } }
+
+/* night: the tavern after midnight */
+html[data-night] #app::before { content: ''; position: fixed; inset: 0; z-index: 3; pointer-events: none; background: radial-gradient(140% 110% at 50% 30%, rgba(10,12,40,.18), rgba(5,6,22,.62) 100%); mix-blend-mode: multiply; }
+.candles span { position: fixed; z-index: 4; width: 340px; height: 340px; margin: -170px; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(255,190,90,.22), rgba(255,150,60,.08) 40%, transparent 70%); mix-blend-mode: screen; animation: candle 2.2s ease-in-out infinite alternate; }
+@keyframes candle { 0% { opacity: .75; transform: scale(1); } 30% { opacity: 1; } 60% { opacity: .85; transform: scale(1.04); } 100% { opacity: .95; transform: scale(.98); } }

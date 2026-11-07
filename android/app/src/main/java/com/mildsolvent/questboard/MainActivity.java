@@ -102,11 +102,18 @@ public class MainActivity extends Activity {
         });
 
         web.loadUrl(START_URL);
+        try { getSystemService(android.app.NotificationManager.class).cancel(UpdatedReceiver.NOTIFY_ID); } catch (Exception ignored) { }
     }
 
     private void pushInsets() {
         if (!pageReady) return;
         web.evaluateJavascript("window.__qbInsets && window.__qbInsets(" + insetTop + "," + insetBottom + "," + insetLeft + "," + insetRight + ")", null);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == Bridge.NOTIFY_PERMISSION_REQUEST && bridge != null) bridge.continueInstall();
     }
 
     @Override

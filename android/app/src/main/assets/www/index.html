@@ -73,6 +73,13 @@
     </div>
     <div class="sheet-status" id="set-status"></div>
 
+    <h3 class="sheet-sub">Magic</h3>
+    <div class="sheet-row">
+      <button type="button" class="btn" id="btn-spellbook">Spellbook</button>
+      <button type="button" class="btn" id="btn-garden" hidden>Garden</button>
+      <button type="button" class="btn" id="btn-wall">Wall: planks</button>
+    </div>
+
     <h3 class="sheet-sub">Board</h3>
     <div class="sheet-row">
       <button type="button" class="btn" id="set-reset-xp">Reset XP</button>
@@ -85,6 +92,8 @@
   <!-- Confirmation: every touch action except a rune tap asks first -->
   <div id="ask-backdrop" hidden></div>
   <section id="ask" hidden role="dialog" aria-modal="true"><h2 id="ask-title"></h2><p id="ask-detail"></p><div class="sheet-row"><button type="button" class="btn" id="ask-no">Cancel</button><button type="button" class="btn primary" id="ask-yes">Yes</button></div></section>
+
+  <button type="button" id="update-pill" hidden></button>
 
   <div id="banner-layer" aria-live="polite"></div>
   <div id="flash" aria-hidden="true"></div>
@@ -127,6 +136,7 @@
   <script src="sync-prompt.js"></script>
   <script src="fx.js"></script>
   <script src="sound.js"></script>
+  <script src="magic.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

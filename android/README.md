@@ -21,8 +21,17 @@ full-screen WebView running the shared renderer (`styles.css`, `fx.js`,
    install starts with sync off, so a shared APK never points at anyone else's
    board.
 
-Updates: install a newer APK over the old one; data and settings stay. The gear
-sheet has a "Check for updates" button that opens the releases page.
+Updates (from 0.6.0): the app checks the latest GitHub release on start and every
+6 hours, downloads the new `-android.apk` in the background into its own private
+storage (not Downloads), and shows **Update vX ready · Install** at the bottom.
+Tap it, confirm, and Android asks once ("Update this app?"). Android does not let
+an app reopen itself, so a "Questboard updated · tap to open" notification appears
+(on Android 13+ the app asks once for notification permission before the first
+update); your board stays as it was. The downloaded file is deleted when the new
+version starts, so nothing is left to clean up. The first time, Android asks to
+allow Questboard to install apps; allow it and come back, it continues by itself.
+Settings → "Check for updates" checks right away. Updating from 0.5.1 or older
+still needs the APK installed by hand once. Data and settings always stay.
 
 ## Use
 

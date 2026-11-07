@@ -68,7 +68,7 @@
   }
 
   // ----- events from the host -----
-  const listeners = { resume: [], back: [], insets: [] };
+  const listeners = { resume: [], back: [], insets: [], update: [] };
   function on(evt, cb) { (listeners[evt] || (listeners[evt] = [])).push(cb); }
   window.__qbResume = () => listeners.resume.forEach((f) => f());
   // Return true when the page consumed the back press (e.g. closed a sheet).
@@ -84,5 +84,38 @@
     if (host && host.copyText) { try { return !!host.copyText(String(text)); } catch { return false; } }
     try { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); window.__qbCopied = text; return ok || true; } catch { return false; }
   }
-  window.questboard = { native: !!host, readFile, writeFile, getPrefs, setPrefs, info, http, openExternal, vibrate, copyText, on };
+  // ----- in-app updates: the APK downloads into private storage and goes to Android's installer -----
+  // Events ({state, done, total, message}) arrive at on('update'). States: downloading, ready,
+  // failed, needs-permission, installing, confirming, cancelled, installed.
+  window.__qbUpdate = (json) => {
+    let e; try { e = JSON.parse(json); } catch { return; }
+    (listeners.update || []).forEach((f) => f(e));
+  };
+  const emitUpdate = (e) => window.__qbUpdate(JSON.stringify(e));
+  const update = host && host.updateDownload ? {
+    supported: true,
+    download: (url) => host.updateDownload(String(url)),
+    install: () => host.updateInstall(),
+    readyVersion: () => { const v = host.updateReadyVersion(); return v === null || v === undefined ? null : String(v); },
+    canInstall: () => !!host.updateCanInstall(),
+    discard: () => host.updateDiscard(),
+  } : {
+    // browser (tests): fetch the file, then pretend Android installed it
+    supported: !host,
+    download: (url) => {
+      fetch(url, { cache: 'no-store' }).then(async (r) => {
+        if (!r.ok) throw new Error(`download failed (HTTP ${r.status})`);
+        const b = await r.arrayBuffer();
+        window.__qbUpdateBytes = b.byteLength;
+        emitUpdate({ state: 'downloading', done: b.byteLength / 2, total: b.byteLength });
+        setTimeout(() => emitUpdate({ state: 'ready', done: b.byteLength, total: b.byteLength, message: window.__qbUpdateVersion || null }), 50);
+      }).catch((err) => emitUpdate({ state: 'failed', done: 0, total: 0, message: err.message }));
+    },
+    install: () => { window.__qbInstalled = (window.__qbInstalled || 0) + 1; emitUpdate({ state: 'installing', done: 0, total: 0 }); },
+    readyVersion: () => null,
+    canInstall: () => true,
+    discard: () => {},
+  };
+
+  window.questboard = { native: !!host, readFile, writeFile, getPrefs, setPrefs, info, http, openExternal, vibrate, copyText, on, update };
 })();

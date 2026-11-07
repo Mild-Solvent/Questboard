@@ -20,11 +20,22 @@ const SYNC_URL = `http://127.0.0.1:${SYNC_PORT}/questboard`;
 const results = [];
 function check(name, ok, detail) { results.push({ name, ok: !!ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// fake GitHub release feed for the in-app updater (0.6.0); off (404) until the updater test turns it on
+const feed = { mode: 'off' };
+const FAKE_APK = Buffer.alloc(300 * 1024, 7);
 
 function staticServer() {
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png' };
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
+      if (req.url.startsWith('/__feed.json')) {
+        if (feed.mode === 'off') { res.writeHead(404); return res.end('{}'); }
+        const assets = [{ name: 'SHA256SUMS', browser_download_url: `http://127.0.0.1:${WWW_PORT}/__sums`, size: 10 }];
+        if (feed.mode === 'apk') assets.push({ name: 'Questboard-9.9.9-android.apk', browser_download_url: `http://127.0.0.1:${WWW_PORT}/__fake.apk`, size: FAKE_APK.length });
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        return res.end(JSON.stringify({ tag_name: 'v9.9.9', assets }));
+      }
+      if (req.url.startsWith('/__fake.apk')) { res.writeHead(200, { 'Content-Type': 'application/vnd.android.package-archive' }); return res.end(FAKE_APK); }
       const p = path.join(www, decodeURIComponent(req.url.split('?')[0]).replace(/^\//, '') || 'index.html');
       if (!p.startsWith(www) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { 'Content-Type': types[path.extname(p)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -56,6 +67,9 @@ async function waitHealth() {
 
     browser = await chromium.launch();
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    // pin the clock to 13:xx so the night-owl / early-bird bonuses (0.6.0) don't change the expected XP
+    await ctx.addInitScript(() => { Date.prototype.getHours = function () { return 13; }; });
+    await ctx.addInitScript((u) => { try { const p = JSON.parse(localStorage.getItem('qb.prefs') || '{}'); if (!p.updateFeed) { p.updateFeed = u; localStorage.setItem('qb.prefs', JSON.stringify(p)); } } catch { /* ignore */ } }, `http://127.0.0.1:${WWW_PORT}/__feed.json`);
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -275,6 +289,95 @@ async function waitHealth() {
     check('copy setup prompt puts the agent prompt on the clipboard', /Questboard sync server/.test(copied), copied.slice(0, 60));
     await page.click('#set-close');
     await sleep(300);
+
+    // 0.6.0: born dates sync, combo bonus after three quests within an hour, bonus entries don't count
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const p9a = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text());
+    check('0.6.0: born dates pushed for open quests', p9a.born && Object.keys(p9a.born).length >= 3, JSON.stringify(p9a.born || {}).slice(0, 80));
+    const totalBefore = await page.textContent('#stat-total');
+    await page.click('.board-wrap:not(.featured) .quest:has-text("Call grandma") .rune');
+    await sleep(2500);
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const p9 = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text());
+    const combos = p9.log.filter((e) => e.bonus === 'combo');
+    check('0.6.0: three quests within an hour give a +30 combo entry', combos.length === 1 && combos[0].xp === 30, JSON.stringify(combos));
+    check('0.6.0: combo is not counted as a cleared quest', (await page.textContent('#stat-total')) === String(Number(totalBefore) + 1), `${totalBefore} -> ${await page.textContent('#stat-total')}`);
+    // the Magic section in settings: spellbook lists the spells, wall cycles
+    await page.click('#btn-settings');
+    await page.waitForSelector('#sheet:not([hidden])');
+    await page.click('#btn-spellbook');
+    await page.waitForSelector('.spellbook-wrap .spell-list li');
+    check('0.6.0: spellbook lists six spells', (await page.locator('.spellbook-wrap .spell-list li').count()) === 6);
+    await page.evaluate(() => window.__qbBack());
+    check('0.6.0: back closes the spellbook', (await page.locator('.spellbook-wrap').count()) === 0);
+    await page.click('#btn-wall');
+    check('0.6.0: wall button cycles the texture', (await page.getAttribute('html', 'data-wall')) === 'weathered', await page.getAttribute('html', 'data-wall'));
+    await page.click('#btn-wall'); await page.click('#btn-wall'); await page.click('#btn-wall'); await page.click('#btn-wall');
+    await page.click('#set-close');
+    await sleep(300);
+    // a still hold on bare wall starts a cast; a drawn stroke on an unlearned spell fizzles instead of cutting/scrolling
+    const wall = await page.$eval('#boards', (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 6, y: r.bottom - 60 }; });
+    await page.mouse.move(wall.x, wall.y); await page.mouse.down(); await sleep(500);
+    const casting = await page.evaluate(() => document.documentElement.classList.contains('casting'));
+    for (let i = 1; i <= 8; i++) await page.mouse.move(wall.x + i * 6, wall.y - i * 20);
+    await page.mouse.up();
+    await sleep(300);
+    check('0.6.0: hold still on the wall starts casting', casting);
+    check('0.6.0: cast leaves casting mode', !(await page.evaluate(() => document.documentElement.classList.contains('casting'))));
+
+    // offline (Father's phone, 0.5.1): sync fails with a long error, the layout must not get wider than
+    // the screen, and quests added meanwhile are pushed once the server is reachable again
+    await page.evaluate((t) => window.Sync.configure({ baseUrl: 'http://127.0.0.1:9/questboard', token: t, device: 'phone' }), token);
+    await page.click('.board-wrap.featured .add-btn');
+    await page.fill('.board-wrap.featured .add-input', 'Added while offline');
+    await page.press('.board-wrap.featured .add-input', 'Enter');
+    await page.evaluate(() => window.Sync.syncNow('test').catch(() => {}));
+    await sleep(1500);
+    await page.evaluate(() => { document.querySelector('#footer-hint').textContent = 'Sync error: GET QUESTS.md → SSLHandshakeException: connection closed by peer while reading the server hello, please try again later'; });
+    await sleep(200);
+    const widths = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: window.innerWidth, boards: Math.round(document.querySelector('#boards').getBoundingClientRect().right), hero: Math.round(document.querySelector('#hero').getBoundingClientRect().right) }));
+    check('long sync error does not widen the layout', widths.doc <= widths.win && widths.boards <= widths.win && widths.hero <= widths.win, JSON.stringify(widths));
+    await page.screenshot({ path: path.join(outDir, 'phone-offline.png') });
+    await page.evaluate(([u, t]) => window.Sync.configure({ baseUrl: u, token: t, device: 'phone' }), [SYNC_URL, token]);
+    await page.evaluate(() => window.Sync.syncNow('test'));
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const qOff = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
+    check('quest added offline is pushed when sync is back', qOff.includes('- [ ] Added while offline'));
+
+    // 0.6.0 in-app updater: settings checks the release feed, the APK downloads inside the app,
+    // a pill offers Install, and Install asks first, then hands the file to Android
+    if (!(await page.$eval('#sheet', (e) => e.hidden))) await page.click('#set-close');
+    check('updater: no pill while there is no update', await page.$eval('#update-pill', (e) => e.hidden));
+    feed.mode = 'noapk';
+    await page.click('#btn-settings'); await page.waitForSelector('#sheet:not([hidden])');
+    await page.click('#set-releases');
+    await page.waitForFunction(() => /newest version/.test((document.querySelector('.toast') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    check('updater: a release without an Android APK is not offered', /newest version/.test(await page.evaluate(() => (document.querySelector('.toast') || {}).textContent || '')) && await page.$eval('#update-pill', (e) => e.hidden));
+    feed.mode = 'apk';
+    await page.click('#set-releases');
+    await page.waitForFunction(() => { const p = document.querySelector('#update-pill'); return p && !p.hidden && p.classList.contains('ready'); }, null, { timeout: 8000 });
+    check('updater: the APK downloads inside the app', (await page.evaluate(() => window.__qbUpdateBytes)) === FAKE_APK.length, String(await page.evaluate(() => window.__qbUpdateBytes)));
+    check('updater: pill says the update is ready', /Update v9\.9\.9 ready/.test(await page.textContent('#update-pill')), await page.textContent('#update-pill'));
+    check('updater: settings button turns into Install', (await page.textContent('#set-releases')) === 'Install v9.9.9', await page.textContent('#set-releases'));
+    await page.click('#set-close'); await sleep(400);
+    const pillBox = await page.$eval('#update-pill', (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, w: window.innerWidth }; });
+    check('updater: pill fits on the phone screen', pillBox.l >= 0 && pillBox.r <= pillBox.w, JSON.stringify(pillBox));
+    await page.screenshot({ path: path.join(outDir, 'phone-update-ready.png') });
+    await page.click('#update-pill');
+    await page.waitForSelector('#ask:not([hidden])');
+    check('updater: Install asks first', /Install v9\.9\.9\?/.test(await page.textContent('#ask-title')));
+    await page.click('#ask-no'); await sleep(200);
+    check('updater: Cancel installs nothing', !(await page.evaluate(() => window.__qbInstalled || 0)));
+    await page.click('#update-pill');
+    await page.waitForSelector('#ask:not([hidden])');
+    await page.click('#ask-yes'); await sleep(300);
+    check('updater: Yes hands it to the installer', (await page.evaluate(() => window.__qbInstalled || 0)) === 1 && /Installing/.test(await page.textContent('#update-pill')), await page.textContent('#update-pill'));
+    await page.evaluate(() => window.__qbUpdate(JSON.stringify({ state: 'cancelled' })));
+    await sleep(200);
+    check('updater: cancelling Android\'s confirm keeps the download for later', /ready/.test(await page.textContent('#update-pill')));
+    await page.evaluate(() => window.__qbUpdate(JSON.stringify({ state: 'installed' })));
+    await sleep(200);
+    feed.mode = 'off';
 
     // back button closes the sheet
     await page.click('#btn-settings');

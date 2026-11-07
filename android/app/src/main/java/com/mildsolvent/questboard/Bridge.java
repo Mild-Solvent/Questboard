@@ -1,6 +1,9 @@
 package com.mildsolvent.questboard;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -33,13 +36,80 @@ import java.util.concurrent.Executors;
  */
 public class Bridge {
     private final Context ctx;
+    private final Activity activity;                     // for the one-time notification permission ask
     private final WebView web;
     private final ExecutorService io = Executors.newFixedThreadPool(2);
 
     Bridge(Context ctx, WebView web) {
         this.ctx = ctx.getApplicationContext();
+        this.activity = ctx instanceof Activity ? (Activity) ctx : null;
         this.web = web;
+        Updater.cleanupStale(this.ctx);                  // an installed or half-finished download is deleted
+        InstallReceiver.listener = (state, message) -> updateEvent(state, 0, 0, message);
     }
+
+    // ---- in-app updates (see Updater) ----
+
+    private void updateEvent(String state, long done, long total, String message) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("state", state);
+            o.put("done", done);
+            o.put("total", total);
+            if (message != null) o.put("message", message);
+            final String json = JSONObject.quote(o.toString());
+            web.post(() -> web.evaluateJavascript("window.__qbUpdate && window.__qbUpdate(" + json + ")", null));
+        } catch (Exception ignored) { }
+    }
+
+    /** Downloads the APK at url into private storage; progress and the result arrive at window.__qbUpdate. */
+    @JavascriptInterface
+    public void updateDownload(String url) {
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) { updateEvent("failed", 0, 0, "bad update link"); return; }
+        io.execute(() -> Updater.download(ctx, url, this::updateEvent));
+    }
+
+    /** Hands the downloaded APK to Android's installer (one confirm tap); the file is deleted right after. */
+    static final int NOTIFY_PERMISSION_REQUEST = 41;
+
+    @JavascriptInterface
+    public void updateInstall() {
+        // Android 13+: ask once for notifications first, so "Questboard updated · tap to open" can
+        // appear after the update (Android does not let the app reopen itself). Install continues
+        // from MainActivity.onRequestPermissionsResult whatever the answer.
+        if (Build.VERSION.SDK_INT >= 33 && activity != null
+                && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            SharedPreferences up = ctx.getSharedPreferences(UpdatedReceiver.PREFS, Context.MODE_PRIVATE);
+            if (!up.getBoolean("askedNotify", false)) {
+                up.edit().putBoolean("askedNotify", true).apply();
+                activity.runOnUiThread(() -> activity.requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFY_PERMISSION_REQUEST));
+                return;
+            }
+        }
+        continueInstall();
+    }
+
+    void continueInstall() {
+        if (!Updater.canInstall(ctx)) {
+            updateEvent("needs-permission", 0, 0, null);
+            try { Updater.openInstallPermission(ctx); } catch (Exception e) { updateEvent("failed", 0, 0, e.getMessage()); }
+            return;
+        }
+        io.execute(() -> {
+            try { Updater.install(ctx); updateEvent("installing", 0, 0, null); }
+            catch (Exception e) { Updater.cleanup(ctx); updateEvent("failed", 0, 0, e.getMessage()); }
+        });
+    }
+
+    /** versionName of a downloaded, newer update waiting to be installed, or null. */
+    @JavascriptInterface
+    public String updateReadyVersion() { return Updater.readyVersion(ctx); }
+
+    @JavascriptInterface
+    public boolean updateCanInstall() { return Updater.canInstall(ctx); }
+
+    @JavascriptInterface
+    public void updateDiscard() { Updater.cleanup(ctx); }
 
     private File fileFor(String name) {
         String safe = name.replaceAll("[^A-Za-z0-9._-]", "_");

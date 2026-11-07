@@ -8,7 +8,9 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
   const XP_PER_QUEST = 25;
-  const RELEASES_URL = 'https://github.com/Mild-Solvent/Questboard/releases/latest';
+  // in-app updates (Father, 2026-11-07): the newest release's -android.apk downloads inside the app
+  const UPDATE_FEED = 'https://api.github.com/repos/Mild-Solvent/Questboard/releases/latest';
+  const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000;
   const SYNC_GUIDE_URL = 'https://github.com/Mild-Solvent/Questboard/blob/main/docs/SYNC.md';
   const RANKS = {
     tavern: ['Tavern Squire', 'Road Wanderer', 'Hedge Knight', 'Guild Adventurer', 'Dragon Botherer', 'Realm Champion', 'Living Legend', 'Myth Incarnate'],
@@ -53,7 +55,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   // ---------- XP / rank ----------
   // XP is the sum of each log entry's xp (quests 25, secrets their own); counts skip secrets (desktop 0.5.0)
   const xp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : Number(e.xp) || XP_PER_QUEST), 0);
-  const questLog = () => progress.log.filter((e) => !e.secret);
+  const questLog = () => progress.log.filter((e) => !e.secret && !e.bonus);
 
   // Rank tiers: every three levels the crest turns into a better metal or gem.
   const TIERS = [
@@ -204,6 +206,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     boards.prepend(cutLayer);
     cutLayer.after(secretLayer);
     drawSecrets();
+    ensureBorn();
     const ordered = [...doc.groups].sort((a, b) => (isFeatured(b) ? 1 : 0) - (isFeatured(a) ? 1 : 0));
     ordered.forEach((g, i) => {
       const wrap = tplGroup.content.firstElementChild.cloneNode(true);
@@ -324,10 +327,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   });
 
   // Tapping bare wood (or open water) leaves a mark: a sword cut in Tavern, a splash in Abyss.
+  const onWall = (t) => (!!t.closest('#hero') && !t.closest('button, .stat, .crest-wrap, .xp-bar')) || t === boards || t === document.body || t.id === 'app';
   window.addEventListener('click', (e) => {
     const t = e.target;
-    const onSign = !!t.closest('#hero') && !t.closest('button, .stat, .crest-wrap, .xp-bar');
-    if (!(onSign || t === boards || t === document.body || t.id === 'app')) return;
+    if (castedAt && performance.now() - castedAt < 600) return;     // that touch cast a spell
+    if (!onWall(t)) return;
     Sound.unlock();
     if (prefs.theme === 'abyss') { FX.splash(e.clientX, e.clientY); Sound.splash && Sound.splash(); }
     else { FX.cut(e.clientX, e.clientY); Sound.cut && Sound.cut(); }
@@ -352,6 +356,20 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     // Only a tap on the rune completes (or undoes) a quest, like the desktop. The rune sits away from
     // the scrolling thumb; a tap on the text or row does nothing, so scrolling never ticks anything.
     rune.addEventListener('click', (e) => { e.stopPropagation(); if (li.__held || li.classList.contains('editing-row')) return; toggle(g, q, li, rune); });
+    if (!isDaily(g) && !q.done) {
+      const st = corruption(q);
+      if (st) li.classList.add(`corrupt-${st}`);
+      if (progress.enchant && progress.enchant.key && progress.enchant.key === norm(q.text)) li.classList.add('enchanted');
+      if (learned('enchant')) {
+        const en = document.createElement('button'); en.className = 'enchant-btn'; en.title = 'Enchant: double XP'; en.textContent = '✧';
+        en.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const on = progress.enchant && progress.enchant.key === norm(q.text);
+          ask(on ? 'Lift the enchantment?' : 'Enchant this quest?', on ? q.text : `${q.text} · double XP (one quest at a time)`, on ? 'Lift it' : 'Enchant').then((ok) => { if (ok) enchantQuest(q, li); });
+        });
+        li.appendChild(en);
+      }
+    }
     const textEl = $('.quest-text', li);
     onHold(li, () => ask('Edit this quest?', q.text, 'Edit').then((ok) => { if (!ok) return; li.classList.add('editing-row'); editQuestText(g, q, textEl, () => li.classList.remove('editing-row')); }), (e) => !e.target.closest('.del, .rune'));
     const del = document.createElement('button'); del.className = 'del'; del.title = 'Remove quest'; del.textContent = '×';
@@ -400,16 +418,24 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       busy = true;
       if (!daily) q.done = true;      // daily quests stay open in QUESTS.md; the log entry is the tick
       const before = levelInfo(xp()).level;
-      progress.log.push({ text: q.text, at: new Date().toISOString(), device: Sync.device() });
+      const { xp: gain, notes } = questXp(g, q);
+      const entry = { text: q.text, at: new Date().toISOString(), device: Sync.device() };
+      if (gain !== XP_PER_QUEST) entry.xp = gain;
+      progress.log.push(entry);
+      if (progress.enchant && progress.enchant.key === norm(q.text)) progress.enchant = { key: null, at: entry.at };
+      const comboHit = checkCombo();
       const after = levelInfo(xp()).level;
+      if (spellOn('lightning')) { Magic.bolt(cx, cy); Sound.thunder && Sound.thunder(); }
+      if (li.className.includes('corrupt-')) { Sound.purify && Sound.purify(); FX.burst(cx, cy, { count: 60, power: 1, colors: ['#c58cff', '#7a2dd6', '#ffffff', '#e6d0ff'] }); }
 
       li.classList.add('completing');
       FX.burst(cx, cy, { count: 70, power: 1.0 });
       FX.shake($('#app'));
       Sound.complete();
       api.vibrate(40);
-      floatText(cx + 40, cy, `+${XP_PER_QUEST} XP`);
-      banner(pick(['Quest complete!', 'Done and dusted!', 'Slain!', 'Another one!', 'Cleared!', 'Victory!']), q.text);
+      floatText(cx + 40, cy, `+${gain} XP`);
+      banner(notes.length ? notes.join(' · ') : pick(['Quest complete!', 'Done and dusted!', 'Slain!', 'Another one!', 'Cleared!', 'Victory!']), q.text);
+      if (comboHit) setTimeout(comboHit, 900);
       $('#rank-crest').classList.remove('pulse'); void $('#rank-crest').offsetWidth; $('#rank-crest').classList.add('pulse');
       renderHero();
       persist();
@@ -425,11 +451,12 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       if (!daily) q.done = false;
       // undo: drop the most recent log entry for this quest (if any)
       let idx = -1; progress.log.forEach((e, i) => { if (norm(e.text) === norm(q.text)) idx = i; });
-      if (idx >= 0) { const e = progress.log.splice(idx, 1)[0]; progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`).slice(-500); }
+      let lost = XP_PER_QUEST;
+      if (idx >= 0) { const e = progress.log.splice(idx, 1)[0]; lost = Number(e.xp) || XP_PER_QUEST; progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`).slice(-500); }
       FX.poof(cx, cy);
       Sound.undo();
       api.vibrate(10);
-      floatText(cx + 40, cy, `-${XP_PER_QUEST} XP`, true);
+      floatText(cx + 40, cy, `-${lost} XP`, true);
       persist();
       render();
     }
@@ -560,6 +587,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const ti = tierIndex(level), t = TIERS[ti], cols = tierColors(t);
     const ascended = ti > tierIndex(level - 1);
     banner(ascended ? `${t.name} rank!` : 'Level up!', `${level} — ${rankName(level)}`, true);
+    const newSpell = SPELLS.find((s) => s.level === level);
+    if (newSpell) setTimeout(() => { banner(`New spell: ${newSpell.name}`, newSpell.how); refreshMagicUi(); }, 2600);
     Sound.levelUp();
     api.vibrate(ascended ? 260 : 120);
     const app = $('#app');
@@ -594,6 +623,9 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     { id: 'gem', name: 'Glittering gem', xp: 40, w: 10 },
     { id: 'rune', name: 'Glowing rune stone', xp: 40, w: 6 },
     { id: 'egg', name: 'Dragon egg', xp: 100, w: 2 },
+    { id: 'gatekey', name: 'Garden gate key', xp: 30, w: 9, when: () => !gardenOpen() },
+    { id: 'spellscroll', name: 'Spell scroll: Enchant', xp: 30, w: 7, when: () => !learned('enchant') },
+    ...Object.keys(Magic.FAMILIARS).filter((f) => f !== 'dragon').map((f) => ({ id: `fam-${f}`, fam: f, name: Magic.FAMILIARS[f].name, xp: 25, w: 4, when: () => !familiars().includes(f) })),
   ];
   const SECRET_ART = {
     coin: '<svg viewBox="0 0 24 24"><defs><radialGradient id="sc" cx="35%" cy="30%"><stop offset="0" stop-color="#fff7c8"/><stop offset=".5" stop-color="#f2b632"/><stop offset="1" stop-color="#8a5a0a"/></radialGradient></defs><ellipse cx="12" cy="12" rx="9" ry="9" fill="url(#sc)" stroke="#5a3a06" stroke-width="1"/><ellipse cx="12" cy="12" rx="6" ry="6" fill="none" stroke="#a8740e" stroke-width="1"/><path d="M12 8v8M10 10h4M10 14h4" stroke="#7a4e06" stroke-width="1.2"/></svg>',
@@ -615,10 +647,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     return s;
   }
   function pickKind() {
-    const total = SECRET_KINDS.reduce((n, k) => n + k.w, 0);
+    const pool = SECRET_KINDS.filter((k) => !k.when || k.when());
+    const total = pool.reduce((n, k) => n + k.w, 0);
     let r = Math.random() * total;
-    for (const k of SECRET_KINDS) { r -= k.w; if (r <= 0) return k; }
-    return SECRET_KINDS[0];
+    for (const k of pool) { r -= k.w; if (r <= 0) return k; }
+    return pool[0];
   }
   function bareSpot() {
     const br = boards.getBoundingClientRect();
@@ -658,7 +691,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       el.style.left = `${it.x}px`; el.style.top = `${it.y}px`;
       el.style.setProperty('--tilt', `${it.tilt || 0}deg`);
       el.style.setProperty('--glint-d', `${(Math.random() * 9).toFixed(1)}s`);
-      el.innerHTML = SECRET_ART[k.id];
+      el.innerHTML = k.fam ? `<span class="peek">${Magic.FAMILIARS[k.fam].e}</span>` : (SECRET_ART[k.id] || SECRET_ART.scroll);
+      if (k.fam) el.classList.add('secret-fam');
       el.addEventListener('pointerdown', (e) => e.stopPropagation());
       el.addEventListener('click', (e) => { e.stopPropagation(); findSecret(it, k, el); });
       secretLayer.appendChild(el);
@@ -670,7 +704,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     s.found += 1;
     savePrefs();
     const before = levelInfo(xp()).level;
-    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: Sync.device(), xp: k.xp, secret: true });
+    progress.log.push({ text: `Secret: ${k.name}`, at: new Date().toISOString(), device: Sync.device(), xp: k.xp, secret: true, kind: k.id });
     const after = levelInfo(xp()).level;
     const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
     el.classList.add('found');
@@ -680,9 +714,205 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     Sound.secret && Sound.secret();
     api.vibrate(50);
     floatText(x + 20, y, `+${k.xp} XP`);
-    banner('Secret found!', `${k.name} · +${k.xp} XP · ${s.found} found so far`);
+    if (k.fam) banner(`${Magic.FAMILIARS[k.fam].name} joins you!`, gardenOpen() ? 'It moved into your garden' : 'It waits by a garden gate you have not found yet');
+    else if (k.id === 'egg') banner('A dragon egg!', 'It hatched: a dragonling lives in your garden now');
+    else if (k.id === 'gatekey') banner('The garden gate key!', 'A secret garden opens: ⚙ → Magic → Garden');
+    else if (k.id === 'spellscroll') banner('You learned Enchant!', 'Tap ✧ on a quest to enchant it');
+    else banner('Secret found!', `${k.name} · +${k.xp} XP · ${s.found} found so far`);
+    refreshMagicUi();
     persist(); renderHero();
     if (after > before) setTimeout(() => levelUp(after), 900);
+  }
+
+  // ---------- magic (desktop 0.6.0) ----------
+  const SPELLS = [
+    { id: 'ember', name: 'Ember trail', level: 5, how: 'Passive: your finger leaves a trail of fire.', toggle: true },
+    { id: 'circle', name: 'Arcane circle', level: 5, how: 'Hold still on bare wall, then draw a circle.' },
+    { id: 'lightning', name: 'Lightning', level: 10, how: 'Hold, then draw a zigzag. Also strikes every quest you clear.', toggle: true },
+    { id: 'rain', name: 'Rainfall', level: 15, how: 'Hold, then swipe straight down.' },
+    { id: 'meteor', name: 'Meteor', level: 20, how: 'Hold, then slash diagonally.' },
+    { id: 'enchant', name: 'Enchant', scroll: true, how: 'Learned from a secret scroll. Tap ✧ on a quest: it glows and gives double XP. One at a time.' },
+  ];
+  const level = () => levelInfo(xp()).level;
+  const secretKinds = () => new Set(progress.log.filter((e) => e.secret && e.kind).map((e) => e.kind));
+  function learned(id) {
+    const sp = SPELLS.find((s) => s.id === id);
+    if (!sp) return false;
+    if (sp.scroll) return secretKinds().has('spellscroll');
+    // spells are knowledge: an XP reset doesn't make you forget them
+    const best = levelInfo(progress.log.reduce((n, e) => n + (Number(e.xp) || XP_PER_QUEST), 0)).level;
+    return Math.max(level(), best) >= sp.level;
+  }
+  const spellOn = (id) => learned(id) && (prefs.spells || {})[id] !== false;
+  const gardenOpen = () => secretKinds().has('gatekey');
+  function familiars() {
+    const k = secretKinds(), out = [];
+    for (const f of Object.keys(Magic.FAMILIARS)) if (k.has(`fam-${f}`)) out.push(f);
+    if (k.has('egg')) out.push('dragon');
+    return out;
+  }
+  function refreshMagicUi() {
+    const gb = $('#btn-garden'); if (gb) gb.hidden = !gardenOpen();
+    if (FX.setTrail) FX.setTrail(spellOn('ember') ? 'ember' : 'normal');
+  }
+  function nightNow() { const h = new Date().getHours(); return h < 5; }
+  function morningNow() { const h = new Date().getHours(); return h >= 6 && h < 11; }
+  function questXp(g, q) {
+    let gain = XP_PER_QUEST; const notes = [];
+    if (progress.enchant && progress.enchant.key === norm(q.text)) { gain *= 2; notes.push('Enchanted ×2'); }
+    const st = isDaily(g) ? 0 : corruption(q);
+    if (st) { gain += [0, 10, 20, 40][st]; notes.push(st === 3 ? 'Monster slain!' : 'Purified!'); }
+    if (nightNow()) { gain += 10; notes.push('Night owl'); }
+    else if (morningNow()) { gain += 15; notes.push('Early bird'); }
+    return { xp: gain, notes };
+  }
+  // corruption: quests nobody touched for a long time rot, then turn into monsters
+  function ensureBorn() {
+    if (!progress.born) progress.born = {};
+    let added = false;
+    const stamp = new Date().toISOString();
+    for (const g of doc.groups) for (const it of g.items) {
+      if (it.type !== 'quest' || it.done) continue;
+      const k = norm(it.text);
+      if (!progress.born[k]) { progress.born[k] = stamp; added = true; }
+    }
+    if (added) persist();
+  }
+  function corruption(q) {
+    const b = progress.born && progress.born[norm(q.text)];
+    if (!b) return 0;
+    const days = (Date.now() - Date.parse(b)) / 86400e3;
+    return days >= 30 ? 3 : days >= 14 ? 2 : days >= 7 ? 1 : 0;
+  }
+  function enchantQuest(q, li) {
+    const k = norm(q.text);
+    const same = progress.enchant && progress.enchant.key === k;
+    progress.enchant = { key: same ? null : k, at: new Date().toISOString() };
+    const r = li.getBoundingClientRect();
+    if (!same) { FX.sparkle(r.left + 30, r.top + r.height / 2, { count: 14, spread: 30, colors: ['#e6d0ff', '#c58cff', '#ffffff', '#ffd36b'], big: true }); Sound.cast && Sound.cast(); toast('Enchanted: this quest gives double XP.'); }
+    else toast('Enchantment lifted.');
+    persist(); render();
+  }
+  // rune circle: three quests inside an hour
+  function checkCombo() {
+    const hour = Date.now() - 3600e3;
+    const lastCombo = progress.log.filter((e) => e.bonus === 'combo').map((e) => Date.parse(e.at)).sort().pop() || 0;
+    const recent = questLog().filter((e) => Date.parse(e.at) > Math.max(hour, lastCombo));
+    if (recent.length < 3) return null;
+    progress.log.push({ text: 'Combo: rune circle', at: new Date().toISOString(), device: Sync.device(), xp: 30, bonus: 'combo' });
+    return () => {
+      const br = boards.getBoundingClientRect();
+      Magic.circle(br.left + br.width / 2, br.top + Math.min(br.height / 2, 300), Math.min(300, br.width * 0.8), TIERS[tierIndex(level())].a, 4200);
+      Sound.cast && Sound.cast();
+      api.vibrate(80);
+      banner('Rune circle!', 'Three quests within an hour · +30 XP');
+      renderHero();
+    };
+  }
+
+  // casting on a phone: hold still on bare wall (so it never fights scrolling), feel a buzz, then draw
+  const HOLD_MS = 380;
+  let gesture = null, castedAt = 0;
+  function castAt(kind, pts) {
+    const end = pts[pts.length - 1];
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const map = { circle: 'circle', zigzag: 'lightning', down: 'rain', diagonal: 'meteor' };
+    const id = map[kind];
+    if (!id) { Sound.fizzle && Sound.fizzle(); FX.poof(end.x, end.y); return false; }
+    const sp = SPELLS.find((s) => s.id === id);
+    if (!learned(id)) { Sound.fizzle && Sound.fizzle(); FX.poof(end.x, end.y); toast(`You don't know ${sp.name} yet: it unlocks at level ${sp.level}.`); return false; }
+    if (id === 'circle') { Magic.circle(cx, cy, Math.max(140, Math.max(...xs) - Math.min(...xs) + 60), TIERS[tierIndex(level())].a); FX.burst(cx, cy, { count: 60, power: 1, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.cast && Sound.cast(); }
+    if (id === 'lightning') { Magic.bolt(end.x, end.y); Sound.thunder && Sound.thunder(); FX.cut(end.x, end.y); }
+    if (id === 'rain') { Magic.rainfall(15000); Sound.cast && Sound.cast(); toast('Rainfall: the tavern roof is leaking again.'); }
+    if (id === 'meteor') { Magic.meteor(end.x, end.y, () => { Sound.boom && Sound.boom(); FX.shake($('#app'), 600); api.vibrate(120); for (let i = 0; i < 3; i++) FX.cut(end.x + (Math.random() - 0.5) * 60, end.y + (Math.random() - 0.5) * 40); }); }
+    api.vibrate(30);
+    return true;
+  }
+  function startDrawing() {
+    if (!gesture) return;
+    gesture.drawing = true;
+    gesture.stroke = Magic.startStroke(TIERS[tierIndex(level())].a);
+    for (const p of gesture.pts) gesture.stroke.add(p.x, p.y);
+    document.documentElement.classList.add('casting');
+    api.vibrate(15);
+  }
+  window.addEventListener('pointerdown', (e) => {
+    if (editing || !onWall(e.target)) return;
+    gesture = { x: e.clientX, y: e.clientY, pts: [{ x: e.clientX, y: e.clientY }], drawing: false, id: e.pointerId, stroke: null };
+    gesture.timer = setTimeout(startDrawing, HOLD_MS);
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!gesture || e.pointerId !== gesture.id) return;
+    const p = { x: e.clientX, y: e.clientY };
+    if (!gesture.drawing) {
+      if (Math.hypot(p.x - gesture.x, p.y - gesture.y) > 10) { clearTimeout(gesture.timer); gesture = null; }   // it's a scroll
+      return;
+    }
+    gesture.pts.push(p);
+    gesture.stroke.add(p.x, p.y);
+    if (Math.random() < 0.3) { FX.sparkle(p.x, p.y, { count: 1, spread: 4, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.draw && Sound.draw(); }
+  });
+  // once drawing, the finger paints instead of scrolling the wall
+  window.addEventListener('touchmove', (e) => { if (gesture && gesture.drawing) e.preventDefault(); }, { passive: false });
+  window.addEventListener('contextmenu', (e) => { if (gesture || onWall(e.target)) e.preventDefault(); });
+  function endGesture(e) {
+    if (!gesture || (e && e.pointerId !== gesture.id)) return;
+    const g = gesture; gesture = null; clearTimeout(g.timer);
+    document.documentElement.classList.remove('casting');
+    if (!g.drawing) return;                      // a plain tap: the click handler cuts the wood
+    const len = g.pts.reduce((n, p, i) => (i ? n + Math.hypot(p.x - g.pts[i - 1].x, p.y - g.pts[i - 1].y) : 0), 0);
+    if (len < 40) { g.stroke.end(false); return; }   // held but didn't draw: let the tap cut
+    castedAt = performance.now();
+    g.stroke.end(castAt(Magic.recognize(g.pts), g.pts));
+  }
+  window.addEventListener('pointerup', endGesture);
+  window.addEventListener('pointercancel', () => { if (gesture && gesture.stroke) gesture.stroke.end(false); if (gesture) clearTimeout(gesture.timer); gesture = null; document.documentElement.classList.remove('casting'); });
+
+  function openSpellbook() {
+    const wrap = document.createElement('div'); wrap.className = 'modal-wrap spellbook-wrap';
+    const lv = level();
+    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>New spells come every five levels. To cast, hold still on bare wall (or the sign) until it buzzes, then draw.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
+    const list = $('.spell-list', wrap);
+    for (const sp of SPELLS) {
+      const ok = learned(sp.id);
+      const li = document.createElement('li'); li.className = ok ? 'known' : 'locked';
+      li.innerHTML = `<b></b><span class="req"></span><small></small>`;
+      $('b', li).textContent = sp.name;
+      $('.req', li).textContent = ok ? 'learned' : sp.scroll ? 'find its scroll' : `level ${sp.level}`;
+      $('small', li).textContent = sp.how;
+      if (ok && sp.toggle) {
+        const t = document.createElement('button'); t.type = 'button'; t.className = 'btn seg' + (spellOn(sp.id) ? ' on' : '');
+        t.textContent = spellOn(sp.id) ? 'on' : 'off';
+        t.addEventListener('click', () => { prefs.spells = prefs.spells || {}; prefs.spells[sp.id] = !spellOn(sp.id); savePrefs(); refreshMagicUi(); t.textContent = spellOn(sp.id) ? 'on' : 'off'; t.classList.toggle('on', spellOn(sp.id)); });
+        li.appendChild(t);
+      }
+      list.appendChild(li);
+    }
+    document.body.appendChild(wrap);
+    const close = () => { wrap.remove(); backHandlers.delete(onBack); };
+    const onBack = () => { close(); return true; };
+    backHandlers.add(onBack);
+    $('.modal-row .btn', wrap).addEventListener('click', close);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  }
+  function openGarden() {
+    Magic.openGarden(familiars());
+    const onBack = () => { Magic.closeGarden(); backHandlers.delete(onBack); return true; };
+    backHandlers.add(onBack);
+  }
+  // wall textures (tavern): planks, weathered, cracked, charred, or the classic wood
+  const WALLS = [['planks', 'Planks'], ['weathered', 'Weathered'], ['cracked', 'Cracked'], ['charred', 'Charred'], ['classic', 'Classic']];
+  function applyWall() {
+    const w = WALLS.find((x) => x[0] === prefs.wall) ? prefs.wall : 'planks';
+    document.documentElement.setAttribute('data-wall', w);
+    const b = $('#btn-wall'); if (b) b.textContent = 'Wall: ' + WALLS.find((x) => x[0] === w)[1].toLowerCase();
+  }
+  function cycleWall() {
+    const i = WALLS.findIndex((x) => x[0] === (prefs.wall || 'planks'));
+    prefs.wall = WALLS[(i + 1) % WALLS.length][0];
+    applyWall(); savePrefs();
+    if (prefs.theme !== 'tavern') toast('Wall: ' + WALLS.find((x) => x[0] === prefs.wall)[1] + ' (shows in the Tavern theme)');
   }
 
   // the wall behind the sign uses the same planks as the board wall, lined up with it
@@ -790,6 +1020,13 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   function startPolling() {
     clearInterval(pollTimer);
     pollTimer = setInterval(() => { if (document.visibilityState === 'visible') Sync.syncNow('poll'); }, 90 * 1000);
+    applyWall();
+    refreshMagicUi();
+    Magic.setNight(nightNow());
+    setInterval(() => { Magic.setNight(nightNow()); refreshMagicUi(); }, 60 * 1000);
+    $('#btn-spellbook').addEventListener('click', openSpellbook);
+    $('#btn-garden').addEventListener('click', openGarden);
+    $('#btn-wall').addEventListener('click', cycleWall);
     tickSecrets();
     setInterval(() => { if (!editing) tickSecrets(); }, 30 * 1000);
     // the crest sparkles in its tier colours, a hot day throws embers
@@ -818,7 +1055,98 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     }, 60 * 1000);
   }
   let lastResumeSync = 0;
+  // ---------- in-app updates ----------
+  // Checks GitHub on start and every 6 hours, downloads the new APK in the background into the app's
+  // private storage, then shows "Update ready · Install". Install hands it to Android, which asks
+  // once and restarts Questboard; the downloaded file is deleted when the new version starts.
+  const upd = { state: 'idle', version: null, url: null, done: 0, total: 0, checkedAt: 0, waitingPermission: false };
+  const verParts = (v) => String(v || '').replace(/^v/i, '').split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  function isNewer(a, b) {
+    if (!/^\d/.test(String(b || ''))) return true;               // a dev build takes any release
+    const x = verParts(a), y = verParts(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+    return false;
+  }
+  function renderUpdate() {
+    const pill = $('#update-pill'), btn = $('#set-releases');
+    const pct = upd.total > 0 ? Math.min(99, Math.round((upd.done / upd.total) * 100)) : 0;
+    let text = '';
+    if (upd.state === 'downloading') text = `Downloading v${upd.version}${pct ? ` · ${pct}%` : '…'}`;
+    else if (upd.state === 'ready') text = `Update v${upd.version} ready · Install`;
+    else if (upd.state === 'installing') text = `Installing v${upd.version}…`;
+    pill.hidden = !text;
+    pill.textContent = text;
+    pill.classList.toggle('ready', upd.state === 'ready');
+    btn.textContent = upd.state === 'ready' ? `Install v${upd.version}` : upd.state === 'downloading' ? `Downloading v${upd.version}…` : upd.state === 'checking' ? 'Checking…' : 'Check for updates';
+  }
+  async function checkUpdate(manual) {
+    if (!api.update || !api.update.supported) { if (manual) toast('Updates are not available here.'); return; }
+    if (upd.state === 'ready') { if (manual) installUpdate(); return; }
+    if (upd.state === 'downloading' || upd.state === 'checking' || upd.state === 'installing') { if (manual) toast(upd.state === 'checking' ? 'Checking for updates…' : `v${upd.version} is on its way.`); return; }
+    upd.state = 'checking'; upd.checkedAt = Date.now(); renderUpdate();
+    try {
+      const r = await api.http('GET', prefs.updateFeed || UPDATE_FEED, { Accept: 'application/vnd.github+json' }, null);
+      if (r.status !== 200) throw new Error(r.error || `HTTP ${r.status}`);
+      const rel = JSON.parse(r.body || '{}');
+      const tag = String(rel.tag_name || '').replace(/^v/i, '');
+      const asset = (rel.assets || []).find((a) => /-android\.apk$/i.test(a.name || ''));
+      if (!tag || !asset || !isNewer(tag, info.version)) {
+        upd.state = 'idle'; renderUpdate();
+        if (manual) toast(`You have the newest version (v${info.version}).`);
+        return;
+      }
+      Object.assign(upd, { state: 'downloading', version: tag, url: asset.browser_download_url, done: 0, total: asset.size || 0 });
+      renderUpdate();
+      if (manual) toast(`Downloading v${tag} inside the app…`);
+      api.update.download(upd.url);
+    } catch (e) {
+      upd.state = 'idle'; renderUpdate();
+      if (manual) toast(`Could not check for updates: ${e.message}`);
+    }
+  }
+  async function installUpdate() {
+    if (upd.state !== 'ready') return;
+    if (!(await ask(`Install v${upd.version}?`, 'Android asks you to confirm. When it is done, tap the "Questboard updated" notification to open it again; your board stays as it is and the download is deleted.', 'Install'))) return;
+    if (!api.update.canInstall()) {
+      upd.waitingPermission = true;
+      toast('Allow Questboard to install updates, then come back. It continues by itself.');
+    }
+    upd.state = 'installing'; renderUpdate();
+    api.update.install();
+  }
+  api.on('update', (e) => {
+    if (e.state === 'downloading') { if (upd.state !== 'downloading') return; upd.done = e.done; upd.total = e.total || upd.total; renderUpdate(); return; }
+    if (e.state === 'ready') {
+      upd.state = 'ready'; if (e.message) upd.version = String(e.message).replace(/^v/i, '');
+      renderUpdate(); banner(`Update v${upd.version} ready`, 'Tap Install at the bottom when you are ready');
+      return;
+    }
+    if (e.state === 'needs-permission') { upd.state = 'ready'; upd.waitingPermission = true; renderUpdate(); return; }
+    if (e.state === 'installing' || e.state === 'confirming') { upd.state = 'installing'; renderUpdate(); return; }
+    if (e.state === 'cancelled') { upd.state = 'ready'; renderUpdate(); toast('Update postponed. Tap Install when you are ready.'); return; }
+    if (e.state === 'installed') { upd.state = 'idle'; renderUpdate(); return; }
+    if (e.state === 'failed') {
+      const had = upd.state;
+      upd.state = 'idle'; renderUpdate();
+      if (had !== 'idle') toast(`Update failed: ${e.message || 'unknown error'}`);
+    }
+  });
+  function bootUpdates() {
+    // came back from an update: say so once
+    if (info.version && /^\d/.test(info.version) && prefs.lastVersion && prefs.lastVersion !== info.version && isNewer(info.version, prefs.lastVersion)) {
+      setTimeout(() => toast(`Updated to v${info.version}.`), 1800);
+    }
+    if (prefs.lastVersion !== info.version) { prefs.lastVersion = info.version; savePrefs(); }
+    $('#update-pill').addEventListener('click', () => { if (upd.state === 'ready') installUpdate(); });
+    const waiting = api.update && api.update.readyVersion ? api.update.readyVersion() : null;
+    if (waiting) { Object.assign(upd, { state: 'ready', version: waiting.replace(/^v/i, '') }); renderUpdate(); }
+    else setTimeout(() => checkUpdate(false), 4000);
+    setInterval(() => { if (Date.now() - upd.checkedAt >= UPDATE_EVERY_MS) checkUpdate(false); }, 10 * 60 * 1000);
+  }
+
   function onResume() {
+    if (upd.waitingPermission && upd.state !== 'idle' && api.update && api.update.canInstall()) { upd.waitingPermission = false; upd.state = 'installing'; renderUpdate(); api.update.install(); }
+    else if (upd.state === 'idle' && upd.checkedAt && Date.now() - upd.checkedAt >= UPDATE_EVERY_MS) checkUpdate(false);
     if (Date.now() - lastResumeSync < 4000) return;
     lastResumeSync = Date.now();
     Sync.syncNow('resume').then(() => refreshSyncButton());
@@ -899,7 +1227,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       const ok = api.copyText ? api.copyText(window.SYNC_AGENT_PROMPT || '') : false;
       toast(ok ? 'Setup prompt copied. Paste it to your AI agent.' : 'Could not copy; the prompt is in the guide.');
     });
-    $('#set-releases').addEventListener('click', () => api.openExternal(RELEASES_URL));
+    $('#set-releases').addEventListener('click', () => { if (upd.state === 'ready') { closeSheet(); installUpdate(); } else checkUpdate(true); });
+    bootUpdates();
 
     api.on('back', () => { if (!sheet.hidden) { closeSheet(); return true; } return false; });
     api.on('resume', onResume);
