@@ -183,6 +183,42 @@ async function waitHealth() {
     check('daily: untick removes the log entry on the server', !p4.log.some((e) => e.text === 'Buy milk'));
     await page.screenshot({ path: path.join(outDir, 'phone-daily.png') });
 
+    // editing (0.4.7): hold a quest to rename it; its ticks follow it
+    const hold = async (sel) => {
+      const b = await page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return { x: r.left + Math.min(60, r.width / 2), y: r.top + r.height / 2 }; });
+      await page.mouse.move(b.x, b.y); await page.mouse.down(); await sleep(700); await page.mouse.up();
+      await page.waitForSelector('.inline-edit', { timeout: 2000 });
+    };
+    await page.click('.board.daily .quest:has-text("Clean room")');
+    await sleep(1600);
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    await hold('.board.daily .quest:has-text("Clean room")');
+    const stillTicked = await page.$$eval('.board.daily .quest.done .quest-text', (els) => els.length);
+    await page.fill('.inline-edit', 'Tidy room');
+    await page.press('.inline-edit', 'Enter');
+    await sleep(400);
+    const rows = await page.$$eval('.board.daily .quest', (els) => els.map((e) => e.className + '|' + e.querySelector('.quest-text').textContent));
+    check('edit: hold opens the editor without ticking', stillTicked >= 1, String(stillTicked));
+    check('edit: renamed quest keeps its daily tick', rows.some((r) => /\bdone\b/.test(r) && r.includes('|Tidy room')), rows.join(' ; '));
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const q5 = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
+    const p5 = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text());
+    check('edit: server has the new quest name', q5.includes('- [ ] Tidy room') && !q5.includes('Clean room'));
+    check('edit: progress log follows the rename', p5.log.some((e) => e.text === 'Tidy room') && !p5.log.some((e) => e.text === 'Clean room'));
+
+    // hold a board title to rename it; a concurrent devbox edit must not undo the rename (merge titleFor)
+    await hold('.board.daily .board-title');
+    await page.fill('.inline-edit', 'Home');
+    await page.press('.inline-edit', 'Enter');
+    await page.waitForFunction(() => window.Sync.isDirty(), null, { timeout: 3000 });
+    const g6 = await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } });
+    const edited6 = (await g6.text()).replace('## Life [daily]\n', '## Life [daily]\n- [ ] Water plants\n');
+    r = await fetch(`${SYNC_URL}/QUESTS.md`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'If-Match': g6.headers.get('etag') }, body: edited6 });
+    await page.waitForFunction(() => window.Sync.getStatus().state === 'ok' && !window.Sync.isDirty(), null, { timeout: 12000 });
+    const q6 = await (await fetch(`${SYNC_URL}/QUESTS.md`, { headers: { Authorization: `Bearer ${token}` } })).text();
+    check('edit: board rename survives a concurrent devbox edit', q6.includes('## Home [daily]') && !q6.includes('## Life') && /## Home \[daily\][^#]*Water plants/.test(q6), q6.replace(/\n/g, '⏎'));
+    await page.screenshot({ path: path.join(outDir, 'phone-edit.png') });
+
     // back button closes the sheet
     await page.click('#btn-settings');
     await page.waitForSelector('#sheet:not([hidden])');

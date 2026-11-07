@@ -63,9 +63,29 @@
       return rd;
     };
 
+    // A board renamed locally keeps its new name unless the remote renamed it too. The local board is
+    // found by the quests it shares with the base board, or else by its position.
+    const has = (doc, t) => doc.groups.some((x) => norm(x.title) === norm(t));
+    const titleFor = (rg) => {
+      const bi0 = base.groups.findIndex((x) => norm(x.title) === norm(rg.title));
+      if (bi0 < 0 || has(local, rg.title)) return rg.title;
+      const keys = new Set(base.groups[bi0].items.filter((i) => i.type === 'quest').map((i) => norm(i.text)));
+      let best = null, score = 0;
+      for (const lg of local.groups) {
+        if (has(base, lg.title) || has(remote, lg.title)) continue;     // not a renamed board
+        const n = lg.items.filter((i) => i.type === 'quest' && keys.has(norm(i.text))).length;
+        if (n > score) { best = lg; score = n; }
+      }
+      if (!best) {
+        const lg = local.groups[bi0];
+        if (lg && !has(base, lg.title) && !has(remote, lg.title)) best = lg;
+      }
+      return best ? best.title : rg.title;
+    };
+
     // 1. remote groups and items, dropping quests local deleted since base
     for (const rg of remote.groups) {
-      const g = { title: rg.title, items: [] };
+      const g = { title: titleFor(rg), items: [] };
       for (const it of rg.items) {
         if (it.type !== 'quest') { g.items.push({ ...it }); continue; }
         const key = norm(it.text);

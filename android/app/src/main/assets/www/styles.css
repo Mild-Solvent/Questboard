@@ -165,9 +165,9 @@ input { user-select: text; }
 .done-wrap summary:hover { opacity: 1; }
 .done-list .quest { font-size: 13px; }
 /* long lists scroll inside the paper instead of growing it over the boards below */
-.board .quests:not(.done-list) { max-height: 330px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.board .quests:not(.done-list) { max-height: 330px; overflow-y: auto; overflow-x: hidden; }
 .board-wrap.featured .board .quests:not(.done-list) { max-height: 440px; }
-.board .done-list { max-height: 168px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.board .done-list { max-height: 168px; overflow-y: auto; overflow-x: hidden; }
 .board .quests::-webkit-scrollbar-corner { background: transparent; }
 .board .quests::-webkit-scrollbar { width: 7px; }
 .board .quests::-webkit-scrollbar-thumb { background: rgba(90, 55, 20, .35); border-radius: 6px; }
@@ -520,3 +520,19 @@ input { user-select: text; }
 :root[data-theme="abyss"] .board-head .daily-toggle { color: var(--text); }
 .quest .resets { margin-left: 8px; font-size: 11px; font-style: italic; opacity: .6; white-space: nowrap; }
 .board.daily .quest.done .quest-text { text-decoration-thickness: 1.5px; }
+
+/* ---------- inline editing ---------- */
+.quest .edit { position: absolute; right: 30px; top: 6px; width: 20px; height: 20px; border-radius: 6px; border: none; background: rgba(0,0,0,.12); color: var(--ink); font-size: 12px; line-height: 20px; opacity: 0; transition: opacity .15s; }
+.quest:hover .edit { opacity: .7; }
+.quest .edit:hover { opacity: 1; background: rgba(40,110,200,.55); color: #fff; }
+:root[data-theme="abyss"] .quest .edit { background: rgba(255,255,255,.15); color: #fff; }
+.quest-text { cursor: text; }
+.board-title { cursor: grab; }
+.board-edit { padding: 0 5px; border: none; background: transparent; color: inherit; font-size: 13px; opacity: 0; transition: opacity .2s; }
+.board:hover .board-edit { opacity: .6; }
+.board-edit:hover { opacity: 1; }
+:root[data-theme="tavern"] .board-head .board-edit { position: absolute; right: 0; top: 4px; color: var(--ink-soft); }
+:root[data-theme="tavern"] .board-title.editing::before, :root[data-theme="tavern"] .board-title.editing::after { content: none; }
+.inline-edit { width: 100%; box-sizing: border-box; font: inherit; color: inherit; letter-spacing: inherit; background: rgba(255,255,255,.35); border: 1px dashed currentColor; border-radius: 5px; padding: 1px 6px; outline: none; }
+.board-title .inline-edit { text-align: center; min-width: 200px; }
+:root[data-theme="abyss"] .inline-edit { background: rgba(0,0,0,.25); }

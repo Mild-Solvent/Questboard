@@ -147,7 +147,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     return `polygon(${pts.join(', ')})`;
   }
 
+  let editing = null, renderLater = false;      // an open inline editor holds off re-renders (sync, timers)
+  const backHandlers = new Set();                // the phone's back button cancels an open editor
+  api.on('back', () => { for (const f of backHandlers) if (f()) return true; return false; });
   function render() {
+    if (editing) { renderLater = true; return; }
     const scrollTop = boards.scrollTop;
     boards.innerHTML = '';
     boards.prepend(cutLayer);
@@ -187,6 +191,8 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       dbtn.title = daily ? 'Daily board: ticks reset 9 hours later. Tap to make it a normal board.' : 'Make this a daily board';
       dbtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDaily(g); });
       $('.board-head', el).appendChild(dbtn);
+      const title = $('.board-title', el);
+      onHold(title, () => editBoardTitle(g, title, cleanTitle));
 
       const ul = $('.quests', el);
       open.forEach((q) => ul.appendChild(questEl(g, q)));
@@ -261,7 +267,9 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     }
     const rune = $('.rune', li);
     // On a phone the whole row is the tap target; the × removes.
-    li.addEventListener('click', (e) => { if (e.target.closest('.del')) return; toggle(g, q, li, rune); });
+    li.addEventListener('click', (e) => { if (e.target.closest('.del') || li.__held || li.classList.contains('editing-row')) return; toggle(g, q, li, rune); });
+    const textEl = $('.quest-text', li);
+    onHold(li, () => { li.classList.add('editing-row'); editQuestText(g, q, textEl, () => li.classList.remove('editing-row')); }, (e) => !e.target.closest('.del'));
     const del = document.createElement('button'); del.className = 'del'; del.title = 'Remove quest'; del.textContent = '×';
     del.addEventListener('click', (e) => { e.stopPropagation(); confirmRemove(g, q, li); });
     li.appendChild(del);
@@ -351,6 +359,82 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     toast('Tap × again to remove this quest');
     setTimeout(() => { if (pendingRemove && pendingRemove.q === q) pendingRemove = null; }, 3000);
   }
+  // ---------- inline editing (desktop 0.4.7: double-click; phone: press and hold) ----------
+  function onHold(el, fn, accept) {
+    let t = null, sx = 0, sy = 0;
+    const cancel = () => { clearTimeout(t); t = null; };
+    el.addEventListener('pointerdown', (e) => {
+      if (editing || (accept && !accept(e))) return;
+      el.__held = false; sx = e.clientX; sy = e.clientY;
+      cancel();
+      t = setTimeout(() => { t = null; el.__held = true; api.vibrate(20); fn(); }, 520);
+    });
+    el.addEventListener('pointermove', (e) => { if (t && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
+    el.addEventListener('pointerup', cancel);
+    el.addEventListener('pointercancel', cancel);
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    // the click that ends a hold must not also tick the quest
+    el.addEventListener('click', (e) => { if (el.__held) { e.stopPropagation(); setTimeout(() => { el.__held = false; }, 0); } }, true);
+  }
+  function inlineEdit(host, value, onSave, onClose) {
+    if (editing) return;
+    const input = document.createElement('input');
+    input.className = 'inline-edit'; input.value = value; input.spellcheck = false;
+    input.setAttribute('enterkeyhint', 'done'); input.setAttribute('autocapitalize', 'sentences');
+    const prev = host.innerHTML;
+    host.innerHTML = ''; host.appendChild(input); host.classList.add('editing');
+    editing = input;
+    input.focus(); input.select();
+    let closed = false;
+    const finish = (save) => {
+      if (closed) return; closed = true;
+      editing = null; host.classList.remove('editing');
+      backHandlers.delete(back);
+      if (onClose) onClose();
+      const v = input.value.replace(/\s+/g, ' ').trim();
+      if (save && v && v !== value && onSave(v) !== false) { renderLater = false; render(); return; }
+      host.innerHTML = prev;
+      if (renderLater) { renderLater = false; render(); }
+    };
+    const back = () => { finish(false); return true; };
+    backHandlers.add(back);
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); input.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    for (const t of ['pointerdown', 'click', 'contextmenu']) input.addEventListener(t, (e) => e.stopPropagation());
+  }
+  function editQuestText(g, q, host, onClose) {
+    inlineEdit(host, q.text, (text) => {
+      const k = norm(text);
+      if (doc.groups.some((x) => x.items.some((i) => i !== q && i.type === 'quest' && norm(i.text) === k))) { toast('There is already a quest with that name.'); return false; }
+      const old = norm(q.text);
+      q.text = text;
+      // ticks and XP follow the quest: re-file its log entries under the new name
+      progress.log = progress.log.map((e) => {
+        if (norm(e.text) !== old) return e;
+        progress.removed = (progress.removed || []).concat(`${e.text}@@${e.at}`).slice(-500);
+        return { ...e, text };
+      });
+      persist(); renderHero();
+      Sound.add();
+      return true;
+    }, onClose);
+  }
+  function editBoardTitle(g, host, shown) {
+    inlineEdit(host, shown, (name) => {
+      const prefix = (/^active:\s*/i.exec(g.title) || [''])[0];
+      const key = `${prefix}${name}`;
+      if (doc.groups.some((x) => x !== g && norm(groupKey(x)) === norm(key))) { toast('There is already a board with that name.'); return false; }
+      g.title = isDaily(g) ? `${key} [daily]` : key;
+      persist();
+      Sound.add();
+      return true;
+    });
+  }
+
   function removeQuest(g, q, li) {
     const i = g.items.indexOf(q);
     if (i < 0) return;
@@ -435,11 +519,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     else if (s.state === 'ok') syncBtn.classList.add('ok');
     syncBtn.title = s.message;
     const hint = $('#footer-hint');
-    if (s.state === 'unset') hint.textContent = 'Tap a quest to complete it. Set up sync in ⚙.';
+    if (s.state === 'unset') hint.textContent = 'Tap a quest to complete it, hold to edit. Set up sync in ⚙.';
     else if (s.state === 'error') hint.textContent = `Sync error: ${s.message}`;
     else if (s.state === 'syncing') hint.textContent = 'Syncing…';
     else if (s.state === 'dirty') hint.textContent = 'Changes waiting to sync.';
-    else hint.textContent = s.at ? `Synced ${timeAgo(s.at)}.` : 'Tap a quest to complete it.';
+    else hint.textContent = s.at ? `Synced ${timeAgo(s.at)}.` : 'Tap a quest to complete it, hold to edit.';
   }
   function timeAgo(iso) {
     const d = (Date.now() - new Date(iso).getTime()) / 1000;

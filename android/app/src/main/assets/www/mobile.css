@@ -136,3 +136,9 @@ button, a, input, summary, .rune { cursor: auto; }
 .daily-toggle { opacity: .4; padding: 3px 9px; }           /* no hover on a phone: keep the toggle findable */
 .daily-toggle.on { opacity: .8; }
 .board .quests:not(.done-list), .board .done-list { overscroll-behavior: auto; }   /* a list at its end hands the swipe to the page */
+
+/* ---------- inline editing (hold a quest or a board title) ---------- */
+.quest .edit, .board-edit { display: none; }
+.inline-edit { font-size: max(16px, 1em); }
+.board-title .inline-edit { min-width: 0; }
+.quest.editing-row { background: rgba(255,255,255,.12); }
