@@ -1325,7 +1325,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     $('#update-pill').addEventListener('click', () => { if (upd.state === 'ready') installUpdate(); });
     const waiting = api.update && api.update.readyVersion ? api.update.readyVersion() : null;
     if (waiting) { Object.assign(upd, { state: 'ready', version: waiting.replace(/^v/i, '') }); renderUpdate(); }
-    else setTimeout(() => checkUpdate(false), 4000);
+    else if (api.native || prefs.updateFeed) setTimeout(() => checkUpdate(false), 4000);   // a browser dev copy doesn't poll GitHub
     setInterval(() => { if (Date.now() - upd.checkedAt >= UPDATE_EVERY_MS) checkUpdate(false); }, 10 * 60 * 1000);
   }
 
@@ -1352,6 +1352,23 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   function setSheetStatus(kind, text) { const el = $('#set-status'); el.className = 'sheet-status' + (kind ? ' ' + kind : ''); el.textContent = text || ''; }
   function readSheet() {
     return { syncUrl: $('#set-url').value.trim().replace(/\/+$/, ''), token: $('#set-token').value.trim(), device: $('#set-device').value.trim() || defaultDevice() };
+  }
+
+  // The paper grain is an SVG turbulence filter; phones re-run it for every tile they paint while
+  // scrolling. Bake it once into a PNG (2x for sharp phone screens) and use that instead.
+  function bakeNoise() {
+    try {
+      const css = getComputedStyle(document.documentElement).getPropertyValue('--noise').trim();
+      const m = /url\("?(data:image\/svg\+xml[^")]+)"?\)/.exec(css);
+      if (!m) return;
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = 440; c.height = 440;
+        c.getContext('2d').drawImage(img, 0, 0, 440, 440);
+        document.documentElement.style.setProperty('--noise', `image-set(url(${c.toDataURL('image/png')}) 2x)`);
+      };
+      img.src = m[1];
+    } catch (e) { /* keep the SVG grain */ }
   }
 
   // ---------- boot ----------
@@ -1425,6 +1442,9 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     });
     window.addEventListener('pointerdown', () => Sound.unlock(), { once: true });
 
+    setTimeout(() => document.documentElement.classList.add('booted'), 1600);   // papers fade in once, not on every re-render
+    if (FX.setLite) FX.setLite(true);                                           // phone: cheaper canvas effects, same look
+    bakeNoise();
     if (Sync.isConfigured()) { Sync.syncNow('boot').then(() => refreshSyncButton()); startPolling(); }
     setTimeout(() => banner(pick(['A new day, adventurer.', 'The board awaits.', 'Rise and quest.']), rankName(levelInfo(xp()).level)), 500);
   }

@@ -124,7 +124,7 @@
   // ---------- ambient (embers / bubbles) ----------
   const amb = [];
   function spawnAmbient() {
-    const n = theme === 'abyss' ? 28 : 30;
+    const n = lite ? 20 : theme === 'abyss' ? 28 : 30;
     amb.length = 0;
     for (let i = 0; i < n; i++) amb.push(newAmbient(true));
   }
@@ -141,7 +141,12 @@
       wob: rnd(0, Math.PI * 2),
     };
   }
+  // Lite mode (the phone app): ambient at 30 fps, glow drawn as a soft halo instead of shadowBlur
+  // (shadowBlur is the slowest thing a 2D canvas can do on mobile GPUs), particles without blur.
+  let lite = false, ambSkip = 0, ambDt = 0;
+  function setLite(on) { lite = !!on; if (lite && amb.length > 22) amb.length = 22; }
   function drawAmbient(t, k = 1) {
+    if (lite) { ambDt += k; if ((ambSkip ^= 1)) return; k = ambDt; ambDt = 0; }
     actx.clearRect(0, 0, W, H);
     const isAbyss = theme === 'abyss';
     for (let i = 0; i < amb.length; i++) {
@@ -159,9 +164,15 @@
         actx.beginPath(); actx.arc(p.x - p.r * 0.35, p.y - p.r * 0.35, Math.max(0.5, p.r * 0.25), 0, Math.PI * 2); actx.fill();
       } else {
         actx.fillStyle = p.c;
-        actx.shadowColor = p.c; actx.shadowBlur = 8;
-        actx.beginPath(); actx.arc(p.x, p.y, p.r, 0, Math.PI * 2); actx.fill();
-        actx.shadowBlur = 0;
+        if (lite) {
+          const a0 = actx.globalAlpha;
+          actx.globalAlpha = a0 * 0.22; actx.beginPath(); actx.arc(p.x, p.y, p.r * 3.2, 0, Math.PI * 2); actx.fill();
+          actx.globalAlpha = a0; actx.beginPath(); actx.arc(p.x, p.y, p.r, 0, Math.PI * 2); actx.fill();
+        } else {
+          actx.shadowColor = p.c; actx.shadowBlur = 8;
+          actx.beginPath(); actx.arc(p.x, p.y, p.r, 0, Math.PI * 2); actx.fill();
+          actx.shadowBlur = 0;
+        }
       }
     }
     actx.globalAlpha = 1;
@@ -240,7 +251,7 @@
   }
 
   let last = performance.now();
-  let running = true;
+  let running = true, fxDirty = true;
   document.addEventListener('visibilitychange', () => {
     const vis = !document.hidden;
     if (vis && !running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
@@ -252,6 +263,9 @@
     const k = dt / 16.67;
     drawAmbient(t, k);
 
+    // nothing flying and nothing left on screen from last frame: leave the effects canvas alone
+    if (!parts.length && !rings.length) { if (fxDirty) { fctx.clearRect(0, 0, W, H); fxDirty = false; } requestAnimationFrame(frame); return; }
+    fxDirty = true;
     fctx.clearRect(0, 0, W, H);
     fctx.globalCompositeOperation = 'lighter';
     for (let i = parts.length - 1; i >= 0; i--) {
@@ -266,7 +280,7 @@
       const alpha = p.kind === 'trail' ? (1 - u) * 0.9 : (u < 0.7 ? 1 : 1 - (u - 0.7) / 0.3);
       fctx.globalAlpha = Math.max(0, alpha);
       fctx.fillStyle = p.c;
-      fctx.shadowColor = p.c; fctx.shadowBlur = p.kind === 'trail' ? 0 : 6;
+      fctx.shadowColor = p.c; fctx.shadowBlur = p.kind === 'trail' || lite ? 0 : 6;
       if (p.kind === 'star') {
         const s = p.size * (u < 0.3 ? u / 0.3 : 1 - (u - 0.3) / 0.7);
         fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.rot || 0);
@@ -426,5 +440,5 @@
     }
   }
   function setTrail(mode) { trailMode = mode; }
-  window.FX = { burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, drawCutOn: (ctx, c) => drawCut(c, ctx), sparkle, embers, nova, drops, setTrail, get theme() { return theme; } };
+  window.FX = { setLite, burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, drawCutOn: (ctx, c) => drawCut(c, ctx), sparkle, embers, nova, drops, setTrail, get theme() { return theme; } };
 })();

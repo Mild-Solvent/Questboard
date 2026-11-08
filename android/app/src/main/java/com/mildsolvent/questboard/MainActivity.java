@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
+        s.setOffscreenPreRaster(true);         // paint tiles just outside the screen too: smoother scrolling
 
         bridge = new Bridge(this, web);
         web.addJavascriptInterface(bridge, "AndroidBridge");
