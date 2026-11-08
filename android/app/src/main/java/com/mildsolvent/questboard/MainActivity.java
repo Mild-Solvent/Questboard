@@ -118,6 +118,13 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == Bridge.SAFE_COPY_PICK_REQUEST && bridge != null)
+            bridge.onSafeCopyPicked(resultCode == RESULT_OK && data != null ? data.getData() : null);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         web.onResume();

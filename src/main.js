@@ -3,7 +3,8 @@
 // (HKCU\...\CurrentVersion\Run) so it shows up in Task Manager > Startup.
 // Quest data lives in Documents\Questboard and is watched for outside edits.
 // App updates come from GitHub releases via electron-updater.
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, powerMonitor } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -15,6 +16,8 @@ let win = null;
 let tray = null;
 let quitting = false;
 let updateReady = null;        // version string once an update is downloaded
+let updateFile = null;         // path of the downloaded installer (kept by electron-updater until the next one)
+let sessionEnding = false;     // Windows is shutting down / restarting / signing out: never start an install now
 let lastWrittenQuests = null;  // what we last wrote, to ignore our own file-watch events
 
 // One instance only: a second launch just focuses the existing window.
@@ -93,11 +96,24 @@ function ensureAutostartOnFirstRun() {
 
 // ---------- updates ----------
 // Checks GitHub releases on start, every 2 h, when the window is shown after a while, and on demand.
-// A downloaded update installs by itself as soon as the window is hidden in the tray (silent install,
-// app comes back hidden); while the window is open the footer offers "restart to update".
+// A downloaded update installs by itself once the window has been hidden in the tray for a few
+// minutes (silent install, app comes back hidden); while the window is open the footer offers
+// "restart to update".
+//
+// Safety (2026-11-08: a silent 0.6.2 update removed 0.6.1 and never installed 0.6.2, most likely cut
+// off by a shutdown/restart, and the app was gone):
+//  - never start an install while Windows is shutting down, restarting or signing out, and never
+//    on quit (autoInstallOnAppQuit is off: quitting during a shutdown would start the installer);
+//  - before installing, a small watchdog (PowerShell, outside the app folder) waits for the
+//    installer and, if Questboard.exe is missing afterwards, runs the kept installer again;
+//  - the installer itself registers a one-time repair at the next sign-in (build/installer.nsh)
+//    for the case where the PC goes down mid-install and takes the watchdog with it.
+// The board (Documents\Questboard) is never touched by any of this.
 function send(channel, payload) { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); }
 const updaterLogPath = () => path.join(app.getPath('userData'), 'updater.log');
 const relaunchHiddenPath = () => path.join(app.getPath('userData'), 'relaunch-hidden');
+const watchdogPath = () => path.join(app.getPath('userData'), 'update-watchdog.ps1');
+const SILENT_INSTALL_DELAY = 3 * 60 * 1000;   // hidden this long before a tray install starts
 function ulog(line) {
   try {
     const p = updaterLogPath();
@@ -108,6 +124,7 @@ function ulog(line) {
 let updateState = { state: 'idle' };
 let lastCheck = 0;
 let checking = false;
+let silentTimer = null;
 function setUpdateState(st) { updateState = st; send('update:status', st); }
 function checkForUpdates(manual) {
   if (!autoUpdater || !app.isPackaged) {
@@ -124,34 +141,99 @@ function checkForUpdates(manual) {
     setUpdateState({ state: 'error', manual, message: String((e && e.message) || e).split('\n')[0].slice(0, 160) });
   });
 }
+function markSessionEnding(why) {
+  if (sessionEnding) return;
+  sessionEnding = true;
+  if (silentTimer) { clearTimeout(silentTimer); silentTimer = null; }
+  ulog(`session ending (${why}): no update install now`);
+}
+// Starts the silent tray install only after the window has stayed hidden for a while: a shutdown
+// closes/hides the window first, and an install must never race a shutdown.
+function scheduleSilentInstall() {
+  if (!updateReady || sessionEnding) return;
+  if (silentTimer) clearTimeout(silentTimer);
+  silentTimer = setTimeout(() => {
+    silentTimer = null;
+    if (sessionEnding || !updateReady) return;
+    if (win && !win.isDestroyed() && win.isVisible()) return;
+    installUpdate({ silent: true });
+  }, SILENT_INSTALL_DELAY);
+}
 function setupUpdater() {
   if (!autoUpdater || !app.isPackaged) return;
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.logger = { info: (m) => ulog(`info ${m}`), warn: (m) => ulog(`warn ${m}`), error: (m) => ulog(`error ${m}`), debug: () => {} };
   autoUpdater.on('update-available', (info) => { setUpdateState({ state: 'downloading', version: info.version, percent: 0, manual: updateState.manual }); });
   autoUpdater.on('update-not-available', () => { checking = false; setUpdateState({ state: 'none', manual: updateState.manual }); });
   autoUpdater.on('download-progress', (p) => setUpdateState({ ...updateState, state: 'downloading', percent: Math.round(p.percent || 0) }));
   autoUpdater.on('update-downloaded', (info) => {
-    checking = false; updateReady = info.version;
-    ulog(`downloaded ${info.version}`);
+    checking = false; updateReady = info.version; updateFile = info.downloadedFile || null;
+    ulog(`downloaded ${info.version}${updateFile ? ` -> ${updateFile}` : ''}`);
     setUpdateState({ state: 'ready', version: info.version, manual: updateState.manual });
     rebuildTray();
-    if (!win || !win.isVisible()) installUpdate({ silent: true });
+    if (!win || !win.isVisible()) scheduleSilentInstall();
   });
   autoUpdater.on('error', (e) => {
     checking = false;
     ulog(`error ${e && e.message}`);
     setUpdateState({ state: 'error', manual: updateState.manual, message: String((e && e.message) || e).split('\n')[0].slice(0, 160) });
   });
+  if (powerMonitor) {
+    try { powerMonitor.on('shutdown', () => markSessionEnding('shutdown')); } catch { /* not on this OS */ }
+    try { powerMonitor.on('suspend', () => { if (silentTimer) { clearTimeout(silentTimer); silentTimer = null; } }); } catch { /* ignore */ }
+    try { powerMonitor.on('resume', () => { if (!sessionEnding && updateReady && (!win || !win.isVisible())) scheduleSilentInstall(); }); } catch { /* ignore */ }
+  }
   setTimeout(() => checkForUpdates(false), 12000);
   setInterval(() => checkForUpdates(false), 2 * 60 * 60 * 1000);
+}
+
+// PowerShell watchdog, run detached from outside the app folder. Waits for this app to exit and
+// the installer to finish, then checks Questboard.exe is back; if not, runs the installer again.
+const WATCHDOG_PS1 = String.raw`param([int]$AppPid, [string]$Installer, [string]$Exe, [string]$Log)
+function L([string]$m) { try { Add-Content -LiteralPath $Log -Value ("{0} watchdog {1}" -f (Get-Date).ToUniversalTime().ToString('o'), $m) } catch {} }
+function InstallerRunning { @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and ($_.Path -ieq $Installer) }).Count -gt 0 }
+L "started: app pid $AppPid, installer $Installer"
+try { Wait-Process -Id $AppPid -Timeout 180 -ErrorAction SilentlyContinue } catch {}
+Start-Sleep -Seconds 5
+$deadline = (Get-Date).AddMinutes(15)
+while ((InstallerRunning) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
+Start-Sleep -Seconds 5
+if (Test-Path -LiteralPath $Exe) { L "ok: app is installed"; exit 0 }
+L "app missing after the update: running the installer again"
+if (-not (Test-Path -LiteralPath $Installer)) { L "installer is gone too: download Questboard from https://github.com/Mild-Solvent/Questboard/releases/latest (board is safe in Documents\Questboard)"; exit 1 }
+try { Start-Process -FilePath $Installer -ArgumentList '/S','--force-run' -Wait } catch { L "repair run failed: $($_.Exception.Message)" }
+Start-Sleep -Seconds 3
+if (Test-Path -LiteralPath $Exe) { L "repaired: app is back" } else { L "repair failed: run $Installer by hand (board is safe in Documents\Questboard)" }
+`;
+function startUpdateWatchdog() {
+  if (process.platform !== 'win32' || !updateFile) return;
+  try {
+    fs.writeFileSync(watchdogPath(), WATCHDOG_PS1, 'utf8');
+    const ps = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const child = spawn(ps, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', watchdogPath(),
+      '-AppPid', String(process.pid), '-Installer', updateFile, '-Exe', process.execPath, '-Log', updaterLogPath()],
+    { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', (e) => ulog(`watchdog failed to start: ${e && e.message}`));
+    child.unref();
+  } catch (e) { ulog(`watchdog failed to start: ${e && e.message}`); }
+}
+// A repair entry left by an installer that did finish (or by a run that the app survived) is not needed.
+function clearRepairEntry() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    const child = spawn('reg.exe', ['delete', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce', '/v', 'QuestboardRepair', '/f'], { stdio: 'ignore', windowsHide: true });
+    child.on('error', () => { /* ignore */ });
+  } catch { /* ignore */ }
 }
 function installUpdate(opts) {
   if (!autoUpdater || !updateReady) return;
   const silent = !!(opts && opts.silent);
+  if (sessionEnding) { ulog(`not installing ${updateReady}: Windows is shutting down`); return; }
+  if (silentTimer) { clearTimeout(silentTimer); silentTimer = null; }
   ulog(`installing ${updateReady}${silent ? ' (silent, from tray)' : ''}`);
-  if (silent) writeFileSafe(relaunchHiddenPath(), updateReady);
+  if (silent) writeFileSafe(relaunchHiddenPath(), JSON.stringify({ version: updateReady, at: Date.now() }));
+  startUpdateWatchdog();
   quitting = true;
   autoUpdater.quitAndInstall(silent, true);
 }
@@ -165,18 +247,29 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  // After a silent update from the tray the app comes back where it was: hidden.
+  // After a silent update from the tray the app comes back where it was: hidden. Only when the
+  // installer started us (--updated) shortly after; a flag left behind by a failed update must not
+  // hide the window after a hand-run install or a repair (that is when the user needs to see it).
   let startHidden = false;
-  try { if (fs.existsSync(relaunchHiddenPath())) { startHidden = true; fs.unlinkSync(relaunchHiddenPath()); } } catch { /* ignore */ }
+  try {
+    if (fs.existsSync(relaunchHiddenPath())) {
+      const ageMs = Date.now() - fs.statSync(relaunchHiddenPath()).mtimeMs;
+      startHidden = process.argv.includes('--updated') && ageMs < 20 * 60 * 1000;
+      fs.unlinkSync(relaunchHiddenPath());
+    }
+  } catch { /* ignore */ }
   win.once('ready-to-show', () => { if (!startHidden) { win.show(); win.focus(); } });
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
+  // Windows only: shutdown / restart / sign-out. No update may start after this.
+  win.on('query-session-end', () => markSessionEnding('query-session-end'));
+  win.on('session-end', () => markSessionEnding('session-end'));
   // Hidden in the tray the renderer idles: no animation frames, lower priority, and a GC hint.
   win.on('hide', () => { win.webContents.setBackgroundThrottling(true); setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.webContents.send('app:idle', true); }, 1000); });
   win.on('show', () => {
     win.webContents.send('app:idle', false);
     if (Date.now() - lastCheck > 30 * 60 * 1000) checkForUpdates(false);
   });
-  win.on('hide', () => { if (updateReady) setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) installUpdate({ silent: true }); }, 1500); });
+  win.on('hide', () => { if (updateReady) scheduleSilentInstall(); });
   win.on('closed', () => { win = null; });
 }
 function showWindow() {
@@ -262,6 +355,8 @@ ipcMain.handle('update:state', () => updateState);
 
 // ---------- lifecycle ----------
 app.whenReady().then(() => {
+  if (app.isPackaged) ulog(`started${process.argv.includes('--updated') ? ' after an update' : ''}`);
+  clearRepairEntry();
   ensureQuestsFile();
   ensureAutostartOnFirstRun();
   createWindow();

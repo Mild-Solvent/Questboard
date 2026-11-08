@@ -1346,7 +1346,37 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const s = Sync.getStatus();
     setSheetStatus(s.state === 'error' ? 'err' : s.state === 'ok' ? 'ok' : '', s.state === 'unset' ? '' : s.message);
     $('#set-about').textContent = `Questboard ${info.version || 'dev'} for Android · ${prefs.syncUrl && prefs.token ? 'syncing with your server' : 'sync is off'} · XP ${xp()} (${progress.log.length} cleared)`;
+    renderSafeCopy();
     sheet.hidden = false; backdrop.hidden = false;
+  }
+
+  // ---------- saved copy (Documents/Questboard, survives uninstall; see SafeCopy.java) ----------
+  function renderSafeCopy() {
+    const sc = api.safeCopy.info();
+    const when = sc.savedAt ? new Date(sc.savedAt).toLocaleString() : 'not yet';
+    $('#set-safecopy-help').textContent = sc.where
+      ? `Every change is also saved to ${sc.where} on this phone (last: ${when}). That copy stays if you uninstall Questboard or an update goes wrong. After a reinstall, tap Restore and pick that folder.`
+      : 'Pick a folder on this phone to keep a copy of your board there. It stays if you uninstall Questboard; after a reinstall, tap Restore and pick the same folder.';
+  }
+  async function restoreSafeCopy() {
+    if (!(await ask('Restore from saved copy?', 'Pick the Questboard folder (Documents/Questboard). If it holds a saved board, it replaces the board on this phone. If it is empty, your board is saved there from now on.', 'Pick folder'))) return;
+    api.safeCopy.pick();
+  }
+  function bootSafeCopy() {
+    api.on('safecopy', (e) => {
+      if (e.state === 'empty') toast(`No saved board there. Your board is saved to ${e.message || 'that folder'} from now on.`);
+      else if (e.state === 'failed') toast(`Could not use that folder: ${e.message || 'unknown error'}`);
+      if (!sheet.hidden) renderSafeCopy();
+    });
+    $('#set-safecopy').addEventListener('click', () => { closeSheet(); restoreSafeCopy(); });
+    const sc = api.safeCopy.info();
+    if (sc.restored) { setTimeout(() => toast(`Board restored from the saved copy${sc.where ? ` in ${sc.where}` : ''}.`), 700); return; }
+    if (sc.fresh) {
+      setTimeout(async () => {
+        if (await ask('Had Questboard before?', 'Your old board may still be saved in Documents/Questboard on this phone. Pick that folder to bring it back, or start fresh.', 'Pick folder')) api.safeCopy.pick();
+        else api.safeCopy.start();
+      }, 1200);
+    }
   }
   function closeSheet() { sheet.hidden = true; backdrop.hidden = true; }
   function setSheetStatus(kind, text) { const el = $('#set-status'); el.className = 'sheet-status' + (kind ? ' ' + kind : ''); el.textContent = text || ''; }
@@ -1431,6 +1461,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     });
     $('#set-releases').addEventListener('click', () => { if (upd.state === 'ready') { closeSheet(); installUpdate(); } else checkUpdate(true); });
     bootUpdates();
+    bootSafeCopy();
 
     api.on('back', () => { if (!sheet.hidden) { closeSheet(); return true; } return false; });
     api.on('resume', onResume);

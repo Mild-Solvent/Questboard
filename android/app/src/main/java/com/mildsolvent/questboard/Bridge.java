@@ -32,7 +32,8 @@ import java.util.concurrent.Executors;
 /**
  * The `AndroidBridge` object the web page sees. Small text files in the app's private storage,
  * prefs, device info, and an async HTTP call (done natively so the quest sync is not subject to
- * WebView CORS rules). Everything here is private to the app; nothing is exported.
+ * WebView CORS rules). Files live in the app's private storage, with a saved copy of the board in
+ * Documents/Questboard (SafeCopy) so it survives an uninstall.
  */
 public class Bridge {
     private final Context ctx;
@@ -46,6 +47,97 @@ public class Bridge {
         this.web = web;
         Updater.cleanupStale(this.ctx);                  // an installed or half-finished download is deleted
         InstallReceiver.listener = (state, message) -> updateEvent(state, 0, 0, message);
+        // Saved copy outside the app (see SafeCopy): bring the board back after a reinstall, and make
+        // sure an existing board has a copy right away (not only after the next change).
+        File dir = appDir();
+        if (!new File(dir, "QUESTS.md").exists()) {
+            autoRestored = SafeCopy.autoRestore(this.ctx, dir, prefs());
+            fresh = !autoRestored;
+            holdCopy = fresh;   // don't write the starter board next to an old saved board before the user answers
+        } else if (SafeCopy.savedAt(this.ctx) == 0) {
+            seedSafeCopy();
+        }
+    }
+
+    // ---- saved copy outside the app (see SafeCopy) ----
+
+    static final int SAFE_COPY_PICK_REQUEST = 42;
+    private boolean fresh = false;          // started with no board and nothing to restore automatically
+    private boolean autoRestored = false;   // started with no board and the saved copy was read back
+    static boolean justRestored = false;    // a folder pick just restored the board (survives the page reload)
+    private volatile boolean holdCopy = false;
+
+    private void saveCopy(String name, String text) { if (!holdCopy) SafeCopy.save(ctx, name, text); }
+
+    /** Fresh install, the user chose to start fresh: begin the saved copy now. */
+    @JavascriptInterface
+    public void safeCopyStart() {
+        if (!holdCopy) return;
+        holdCopy = false;
+        seedSafeCopy();
+    }
+
+    private File appDir() {
+        File dir = new File(ctx.getFilesDir(), "questboard");
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
+    private void seedSafeCopy() {
+        for (String name : SafeCopy.FILES) {
+            if (name.equals("prefs.json")) { SafeCopy.save(ctx, name, prefs().getString("json", "{}")); continue; }
+            File f = new File(appDir(), name);
+            if (!f.exists()) continue;
+            try { SafeCopy.save(ctx, name, new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)); } catch (Exception ignored) { }
+        }
+    }
+
+    /** {available, where, savedAt, fresh, restored: "auto"|"picked"|null} for the board and settings. */
+    @JavascriptInterface
+    public String safeCopyInfo() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("available", SafeCopy.available(ctx));
+            o.put("where", SafeCopy.where(ctx));
+            o.put("savedAt", SafeCopy.savedAt(ctx));
+            o.put("fresh", fresh);
+            String restored = justRestored ? "picked" : (autoRestored ? "auto" : null);
+            if (restored != null) o.put("restored", restored);
+            justRestored = false; autoRestored = false; fresh = false;   // report once
+        } catch (Exception ignored) { }
+        return o.toString();
+    }
+
+    /** Opens the system folder picker; the answer comes back through window.__qbSafeCopy. */
+    @JavascriptInterface
+    public void safeCopyPick() {
+        if (activity == null) { safeCopyEvent("failed", "no screen to show the picker on"); return; }
+        activity.runOnUiThread(() -> {
+            try { activity.startActivityForResult(SafeCopy.pickIntent(), SAFE_COPY_PICK_REQUEST); }
+            catch (Exception e) { safeCopyEvent("failed", "could not open the folder picker"); }
+        });
+    }
+
+    /** MainActivity hands the picked folder here. A restored board reloads the page. */
+    void onSafeCopyPicked(Uri tree) {
+        if (tree == null) { safeCopyStart(); safeCopyEvent("cancelled", null); return; }
+        holdCopy = false;
+        io.execute(() -> {
+            String r;
+            try { r = SafeCopy.usePicked(ctx, tree, appDir(), prefs()); } catch (Exception e) { safeCopyEvent("failed", e.getMessage()); return; }
+            if ("restored".equals(r)) { justRestored = true; web.post(web::reload); }
+            else safeCopyEvent(r, SafeCopy.where(ctx));
+        });
+    }
+
+    private void safeCopyEvent(String state, String message) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("state", state);
+            if (message != null) o.put("message", message);
+            final String json = JSONObject.quote(o.toString());
+            web.post(() -> web.evaluateJavascript("window.__qbSafeCopy && window.__qbSafeCopy(" + json + ")", null));
+        } catch (Exception ignored) { }
     }
 
     // ---- in-app updates (see Updater) ----
@@ -113,9 +205,7 @@ public class Bridge {
 
     private File fileFor(String name) {
         String safe = name.replaceAll("[^A-Za-z0-9._-]", "_");
-        File dir = new File(ctx.getFilesDir(), "questboard");
-        if (!dir.exists()) dir.mkdirs();
-        return new File(dir, safe);
+        return new File(appDir(), safe);
     }
 
     @JavascriptInterface
@@ -139,7 +229,9 @@ public class Bridge {
         } catch (Exception e) {
             return false;
         }
-        return tmp.renameTo(f);
+        boolean ok = tmp.renameTo(f);
+        if (ok) saveCopy(f.getName(), text);
+        return ok;
     }
 
     private SharedPreferences prefs() { return ctx.getSharedPreferences("questboard", Context.MODE_PRIVATE); }
@@ -148,7 +240,11 @@ public class Bridge {
     public String getPrefs() { return prefs().getString("json", "{}"); }
 
     @JavascriptInterface
-    public void setPrefs(String json) { prefs().edit().putString("json", json == null ? "{}" : json).apply(); }
+    public void setPrefs(String json) {
+        String v = json == null ? "{}" : json;
+        prefs().edit().putString("json", v).apply();
+        saveCopy("prefs.json", v);
+    }
 
     @JavascriptInterface
     public String info() {

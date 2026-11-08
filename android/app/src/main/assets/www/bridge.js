@@ -117,5 +117,21 @@
     discard: () => {},
   };
 
-  window.questboard = { native: !!host, readFile, writeFile, getPrefs, setPrefs, info, http, openExternal, vibrate, copyText, on, update };
+  // ----- saved copy of the board outside the app (Documents/Questboard), survives an uninstall -----
+  // Events ({state: empty|cancelled|failed, message}) arrive at on('safecopy'); a restore reloads the page.
+  window.__qbSafeCopy = (json) => {
+    let e; try { e = JSON.parse(json); } catch { return; }
+    (listeners.safecopy || []).forEach((f) => f(e));
+  };
+  const safeCopy = host && host.safeCopyInfo ? {
+    info: () => { try { return JSON.parse(host.safeCopyInfo()) || {}; } catch { return {}; } },
+    pick: () => host.safeCopyPick(),
+    start: () => { if (host.safeCopyStart) host.safeCopyStart(); },
+  } : {
+    info: () => ({ available: false, where: null, savedAt: 0, fresh: false }),
+    pick: () => window.__qbSafeCopy(JSON.stringify({ state: 'failed', message: 'only on the phone' })),
+    start: () => {},
+  };
+
+  window.questboard = { native: !!host, readFile, writeFile, getPrefs, setPrefs, info, http, openExternal, vibrate, copyText, on, update, safeCopy };
 })();

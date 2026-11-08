@@ -456,6 +456,18 @@ async function waitHealth() {
     await sleep(200);
     feed.mode = 'off';
 
+    // 0.6.4: saved copy outside the app (survives uninstall)
+    await page.click('#btn-settings');
+    await page.waitForSelector('#sheet:not([hidden])');
+    check('saved copy: settings explain where the board copy lives', (await page.textContent('#set-safecopy-help')).length > 40, await page.textContent('#set-safecopy-help'));
+    await page.click('#set-safecopy');
+    await page.waitForSelector('#ask:not([hidden])');
+    check('saved copy: Restore asks first', /Restore from saved copy/.test(await page.textContent('#ask-title')));
+    await page.click('#ask-yes');
+    await sleep(300);
+    check('saved copy: a failed pick says so', /Could not use that folder/.test(await page.evaluate(() => document.body.innerText)));
+    await sleep(2500);
+
     // back button closes the sheet
     await page.click('#btn-settings');
     await page.waitForSelector('#sheet:not([hidden])');

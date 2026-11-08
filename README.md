@@ -16,6 +16,18 @@ Windows SmartScreen may warn because the installer is not code-signed. Click
 "More info" → "Run anyway". Later versions download in the background; a
 "restart to update" link appears in the footer when one is ready.
 
+### If an update ever leaves you without the app
+
+Your board is never inside the app folder: it is in `Documents\Questboard` (quests,
+progress, settings and the `backups` folder), and no install, update or uninstall
+touches it. Updates guard themselves: they never start while Windows shuts down,
+a watchdog re-runs the installer if the app is missing afterwards, and if the PC
+went down mid-update the installer runs again by itself at the next sign-in. If
+the app is still gone, run the kept installer
+`%LOCALAPPDATA%\questboard-updater\pending\Questboard-Setup-<version>-x64.exe`
+or download the latest one from the releases page. The board shows up as it was.
+What happened is logged in `%APPDATA%\Questboard\updater.log`.
+
 ## Your quests
 
 The app reads `Documents\Questboard\QUESTS.md` and watches it, so edits from any
@@ -60,3 +72,9 @@ themselves from the latest release.
 Each release also carries `Questboard-<version>-android.apk`. Install it on your
 phone (allow installing from your browser when asked). It installs over earlier
 versions. The Android app lives in `android/`.
+
+Your board is also saved to `Documents/Questboard` on the phone (Settings → Saved
+copy), so it survives uninstalling the app. After a reinstall Questboard brings it
+back by itself when Android lets it read that folder; otherwise it asks once and
+you pick `Documents/Questboard`. No sync server needed. In-app updates can't remove
+the app: Android only replaces it once the new version is fully installed.
