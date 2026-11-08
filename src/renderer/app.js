@@ -267,7 +267,7 @@
     const free = settings.layout.mode === 'free';
     boards.classList.toggle('free', free);
     $('#btn-tidy').hidden = !free;
-    if (!free) { $$('.board-wrap', boards).forEach((w) => { w.style.left = w.style.top = w.style.width = ''; }); return; }
+    if (!free) { $$('.board-wrap, .new-paper', boards).forEach((w) => { w.style.left = w.style.top = w.style.width = ''; }); return; }
     const pos = settings.layout.pos;
     // boards that have no saved spot get one from the grid position they would have had
     const missing = $$('.board-wrap', boards).filter((w) => !pos[w.dataset.group]);
@@ -308,6 +308,16 @@
       w.style.top = `${p.y}px`;
       maxX = Math.max(maxX, p.x + p.w); maxY = Math.max(maxY, p.y + w.offsetHeight);
     });
+    // The blank "pin a new paper" sits below everything, lined up with the leftmost board.
+    const blank = $('.new-paper', boards);
+    if (blank) {
+      const minX = items.length ? Math.min(...items.map((it) => it.p.x)) : 0;
+      const widths = items.map((it) => it.p.w).sort((a, b) => a - b);
+      const bw = widths.length ? widths[Math.floor(widths.length / 2)] : 320;
+      const by = items.length ? maxY + 30 : 0;
+      blank.style.left = `${minX}px`; blank.style.top = `${by}px`; blank.style.width = `${bw}px`;
+      maxX = Math.max(maxX, minX + bw); maxY = Math.max(maxY, by + blank.offsetHeight);
+    }
     let spacer = $('.canvas-spacer', boards);
     if (!spacer) { spacer = document.createElement('div'); spacer.className = 'canvas-spacer'; boards.appendChild(spacer); }
     spacer.style.left = `${maxX + 40}px`; spacer.style.top = `${maxY + 40}px`;
@@ -622,6 +632,11 @@
       if (!title) return false;
       if (doc.groups.some((x) => norm(groupKey(x)) === norm(title))) { toast('There is already a paper with that name.'); return false; }
       doc.groups.push({ title, items: [] });
+      // free layout: the new paper is nailed up exactly where the blank one was
+      if (settings.layout.mode === 'free' && b.style.left) {
+        settings.layout.pos[groupKey(doc.groups[doc.groups.length - 1])] = { x: parseFloat(b.style.left) || 0, y: parseFloat(b.style.top) || 0, w: parseFloat(b.style.width) || 320 };
+        saveSettings();
+      }
       changed();
       Sound.add();
       setTimeout(() => {
@@ -643,7 +658,6 @@
     obs.observe(label, { childList: true });
   }
   function newPaper() {
-    if (settings.layout.mode === 'free') { settings.layout.mode = 'grid'; saveSettings(); applyLayout(); }
     const b = $('.new-paper', boards);
     if (!b) return;
     b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });

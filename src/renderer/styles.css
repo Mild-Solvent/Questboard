@@ -856,7 +856,7 @@ html.vortex #boards { animation: vortex 1.5s cubic-bezier(.5,0,.3,1); transform-
 .new-paper .np-label b { font-size: 26px; margin-right: 6px; vertical-align: -3px; }
 .new-paper.naming { cursor: default; border-style: solid; background: rgba(233, 215, 174, .9); color: var(--ink); }
 .new-paper .inline-edit { width: min(320px, 80%); font: 600 18px var(--font-head); text-align: center; }
-#boards.free .new-paper { display: none; }
+#boards.free .new-paper { position: absolute; margin: 0; }
 :root[data-theme="abyss"] .new-paper { border-color: rgba(140, 235, 255, .4); color: rgba(200, 245, 255, .8); background: rgba(10, 55, 95, .25); border-radius: 12px; }
 :root[data-theme="abyss"] .new-paper:hover { border-color: rgba(140, 235, 255, .8); background: rgba(40, 120, 175, .3); }
 :root[data-theme="abyss"] .new-paper.naming { background: rgba(10, 55, 95, .7); color: var(--text); }
