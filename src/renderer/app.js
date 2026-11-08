@@ -115,6 +115,7 @@
 
   // ---------- rendering ----------
   const boards = $('#boards');
+  if (window.Magic && Magic.setScroller) Magic.setScroller(boards);   // spell results scroll with the wall
   const cutLayer = document.createElement('div');
   cutLayer.className = 'cut-layer';
   const tplGroup = $('#tpl-group');
@@ -1557,6 +1558,7 @@
     $('#btn-theme').addEventListener('click', toggleTheme);
     $('#btn-wall').addEventListener('click', cycleWall);
     $('#btn-new-paper').addEventListener('click', newPaper);
+    $('#btn-new-paper-top').addEventListener('click', newPaper);
     $('#btn-sound').addEventListener('click', () => { settings.sound = !settings.sound; applySound(); if (settings.sound) { Sound.unlock(); Sound.add(); } saveSettings(); });
     $('#btn-autostart').addEventListener('click', async () => {
       const a = await api.getAutostart();

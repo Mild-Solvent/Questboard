@@ -5,6 +5,27 @@
   const layer = document.createElement('div');
   layer.id = 'magic-layer';
   document.body.appendChild(layer);
+  // Spell results cast at a spot (rune circle, the burned-in shape, hearts) are pinned to the wall:
+  // they live in `anchored`, which moves with the board's scroll, so they scroll with the papers.
+  const anchored = document.createElement('div');
+  anchored.className = 'magic-anchored';
+  layer.appendChild(anchored);
+  let scroller = null;
+  const scrollX = () => (scroller ? scroller.scrollLeft : 0);
+  const scrollY = () => (scroller ? scroller.scrollTop : 0);
+  function syncScroll() { anchored.style.transform = `translate(${-scrollX()}px, ${-scrollY()}px)`; }
+  function setScroller(el) {
+    if (scroller) scroller.removeEventListener('scroll', syncScroll);
+    scroller = el || null;
+    if (scroller) scroller.addEventListener('scroll', syncScroll, { passive: true });
+    syncScroll();
+  }
+  // places el at screen point (x, y) on the wall
+  function pin(el, x, y) {
+    syncScroll();
+    el.style.left = `${x + scrollX()}px`; el.style.top = `${y + scrollY()}px`;
+    anchored.appendChild(el);
+  }
   const SVGNS = 'http://www.w3.org/2000/svg';
 
   // ---------- gesture recognition ----------
@@ -147,7 +168,7 @@
   function circle(x, y, size = 240, color = '#ffd36b', ms = 3800) {
     const el = document.createElement('div');
     el.className = 'rune-circle';
-    el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.width = el.style.height = `${size}px`;
+    el.style.width = el.style.height = `${size}px`;
     el.style.setProperty('--rc', color); el.style.setProperty('--life', `${ms}ms`);
     let runes = ''; for (let i = 0; i < 24; i++) runes += RUNES[(Math.random() * RUNES.length) | 0];
     const id = `rc${Math.random().toString(36).slice(2, 8)}`;
@@ -158,7 +179,7 @@
       <polygon class="rc-draw" points="${star[0]} ${star[2]} ${star[4]}"/><polygon class="rc-draw" points="${star[1]} ${star[3]} ${star[5]}"/>
       <circle class="rc-draw" cx="50" cy="50" r="12"/>
       <text class="rc-runes"><textPath href="#${id}">${runes}</textPath></text></svg>`;
-    layer.appendChild(el);
+    pin(el, x, y);
     setTimeout(() => el.remove(), ms + 100);
   }
 
@@ -189,10 +210,10 @@
     const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('class', 'shape-glow');
     svg.setAttribute('viewBox', '-0.6 -0.6 1.2 1.2');
-    svg.style.left = `${x}px`; svg.style.top = `${y}px`; svg.style.width = svg.style.height = `${size}px`;
+    svg.style.width = svg.style.height = `${size}px`;
     svg.style.color = color;
     svg.innerHTML = `<polyline points="${pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' ')}"/>`;
-    layer.appendChild(svg);
+    pin(svg, x, y);
     setTimeout(() => svg.remove(), 1700);
   }
 
@@ -239,11 +260,10 @@
       const h = document.createElement('span');
       h.className = 'float-heart';
       h.textContent = ['💖', '💗', '💕', '❤️'][(Math.random() * 4) | 0];
-      h.style.left = `${x + rnd(-80, 80)}px`; h.style.top = `${y + rnd(-20, 40)}px`;
       h.style.fontSize = `${rnd(16, 34) | 0}px`;
       h.style.setProperty('--dx', `${rnd(-60, 60) | 0}px`);
       h.style.animationDelay = `${rnd(0, 0.6).toFixed(2)}s`;
-      layer.appendChild(h);
+      pin(h, x + rnd(-80, 80), y + rnd(-20, 40));
       setTimeout(() => h.remove(), 3200);
     }
   }
@@ -339,5 +359,5 @@
   }
   function closeGarden() { clearInterval(gardenTimer); document.querySelectorAll('.garden-wrap').forEach((w) => w.remove()); }
 
-  window.Magic = { recognize, startStroke, circle, bolt, meteor, rainfall, fireball, ward, starfall, hearts, vortex, shapeGlow, setNight, openGarden, closeGarden, FAMILIARS };
+  window.Magic = { setScroller, recognize, startStroke, circle, bolt, meteor, rainfall, fireball, ward, starfall, hearts, vortex, shapeGlow, setNight, openGarden, closeGarden, FAMILIARS };
 })();

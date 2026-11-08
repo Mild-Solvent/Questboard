@@ -123,7 +123,9 @@ input { user-select: text; }
 
 .cut-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: hidden; z-index: 0; pointer-events: none; }
 .cut-bake { position: absolute; left: 0; top: 0; pointer-events: none; }
-.board-wrap { position: relative; z-index: 1; animation: board-in .5s cubic-bezier(.2,.9,.3,1.15) both; animation-delay: calc(var(--i, 0) * 60ms); }
+/* z-index 5: every paper sits above the room's vignette/night shade (z 3) and candle glow (z 4), so all are
+   equally bright; a paper that was dragged only gets a higher z to sit on top of the others */
+.board-wrap { position: relative; z-index: 5; animation: board-in .5s cubic-bezier(.2,.9,.3,1.15) both; animation-delay: calc(var(--i, 0) * 60ms); }
 .board-wrap.featured { grid-column: 1 / -1; }
 @keyframes board-in { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; } }
 .board { position: relative; color: var(--ink); padding: 14px 16px 10px; }
@@ -701,6 +703,7 @@ input { user-select: text; }
 
 /* ---------- magic ---------- */
 #magic-layer { position: fixed; inset: 0; pointer-events: none; z-index: 48; overflow: hidden; }
+.magic-anchored { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; will-change: transform; }
 .stroke-svg, .bolt-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stroke-svg polyline { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px currentColor) drop-shadow(0 0 12px #fff8); opacity: .95; }
 .stroke-svg.cast polyline { animation: stroke-cast .6s ease-out forwards; }
@@ -808,7 +811,7 @@ html[data-night] #app::before { content: ''; position: fixed; inset: 0; z-index:
 .secret::after { animation-duration: 31s; width: 12px; height: 12px; margin: -6px; }
 .secret.tucked { z-index: 0; }
 .secret-layer { z-index: 0; }
-#boards > .board-wrap { z-index: 1; }
+#boards > .board-wrap { z-index: 5; }   /* above the room shade (z 3) and candles (z 4): every paper equally bright */
 
 /* ---------- what secrets do ---------- */
 #fun-layer { position: fixed; inset: 0; pointer-events: none; z-index: 49; overflow: hidden; }
@@ -847,14 +850,21 @@ html.vortex #boards { animation: vortex 1.5s cubic-bezier(.5,0,.3,1); transform-
 
 /* ---------- pin a new paper ---------- */
 .new-paper {
-  position: relative; z-index: 1; min-height: 120px; display: grid; place-items: center; cursor: pointer;
-  border: 2px dashed rgba(255, 230, 190, .35); border-radius: 6px; color: rgba(255, 236, 205, .7);
-  background: rgba(20, 9, 3, .18); transition: background .2s, border-color .2s, color .2s, transform .2s;
-  font: 600 17px var(--font-head); letter-spacing: .5px;
+  position: relative; z-index: 5; min-height: 120px; display: grid; place-items: center; cursor: pointer;
+  border: 2px dashed rgba(255, 230, 190, .75); border-radius: 6px; color: #fff3dc;
+  background: rgba(233, 215, 174, .16); transition: background .2s, border-color .2s, color .2s, transform .2s;
+  font: 600 19px var(--font-head); letter-spacing: .5px; text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+  box-shadow: 0 0 18px rgba(255, 200, 120, .18), inset 0 0 22px rgba(255, 220, 160, .12);
+  animation: new-paper-glow 2.6s ease-in-out infinite alternate;
 }
+@keyframes new-paper-glow { from { box-shadow: 0 0 10px rgba(255, 200, 120, .12), inset 0 0 16px rgba(255, 220, 160, .08); } to { box-shadow: 0 0 26px rgba(255, 200, 120, .32), inset 0 0 26px rgba(255, 220, 160, .16); } }
+/* title bar "+ New paper": the obvious way to add a paper, wherever the blank one is */
+.tb-new-paper { color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.tb-new-paper b { font-size: 17px; line-height: 1; margin-right: 2px; }
+.tb-new-paper:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .new-paper:hover { background: rgba(255, 230, 190, .10); border-color: rgba(255, 230, 190, .7); color: #fff3dc; transform: rotate(-.6deg) scale(1.01); }
-.new-paper .np-label b { font-size: 26px; margin-right: 6px; vertical-align: -3px; }
-.new-paper.naming { cursor: default; border-style: solid; background: rgba(233, 215, 174, .9); color: var(--ink); }
+.new-paper .np-label b { font-size: 32px; margin-right: 8px; vertical-align: -5px; color: var(--accent); }
+.new-paper.naming { cursor: default; border-style: solid; background: rgba(233, 215, 174, .9); color: var(--ink); animation: none; text-shadow: none; }
 .new-paper .inline-edit { width: min(320px, 80%); font: 600 18px var(--font-head); text-align: center; }
 #boards.free .new-paper { position: absolute; margin: 0; }
 :root[data-theme="abyss"] .new-paper { border-color: rgba(140, 235, 255, .4); color: rgba(200, 245, 255, .8); background: rgba(10, 55, 95, .25); border-radius: 12px; }
