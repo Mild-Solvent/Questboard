@@ -502,31 +502,36 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     });
   }
   // ---------- inline editing (desktop 0.4.7: double-click; phone: press and hold) ----------
-  // 0.7.0: a spell can be drawn from a quest too. Hold still: at HOLD_MS it buzzes and you can draw;
-  // keep holding without moving until HOLD_EDIT_MS and it asks to edit the quest instead.
+  // 0.7.0: a spell can be drawn from a quest too. Hold still: at HOLD_MS it buzzes and you can draw.
+  // While that spell hold is armed nothing opens mid-press (slow WebViews deliver the first move late);
+  // the choice is made on release: a still hold of HOLD_EDIT_MS or more edits, a drawn stroke casts.
   const HOLD_EDIT_MS = 750;
+  const strokeLen = (pts) => pts.reduce((n, p, i) => (i ? n + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0), 0);
   function onHold(el, fn, accept) {
-    let t = null, sx = 0, sy = 0, downAt = 0;
-    const cancel = () => { clearTimeout(t); t = null; };
+    let t = null, waitUp = false, sx = 0, sy = 0, downAt = 0;
+    const cancel = () => { clearTimeout(t); t = null; waitUp = false; };
+    const fire = () => { cancel(); dropGesture(); el.__held = true; api.vibrate(20); fn(); };
+    const onTimer = () => {
+      if (!t) return;
+      if (gesture && gesture.drawing) { t = null; waitUp = true; return; }   // a spell is armed: decide on release
+      fire();
+    };
     el.addEventListener('pointerdown', (e) => {
       if (editing || (accept && !accept(e))) return;
       el.__held = false; sx = e.clientX; sy = e.clientY; downAt = performance.now();
       cancel();
-      t = setTimeout(fire, HOLD_EDIT_MS);
+      t = setTimeout(onTimer, HOLD_EDIT_MS);
     });
-    // Chrome's own long-press (contextmenu) also opens it, so a busy page can't miss the hold
-    const fire = () => {
-      if (!t) return;
-      if (gesture && gesture.drawing && gesture.pts.length > 3) { cancel(); return; }   // they are drawing a spell
-      cancel(); dropGesture(); el.__held = true; api.vibrate(20); fn();
-    };
-    el.addEventListener('pointermove', (e) => { if (t && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
-    // a slow WebView can run the timer late: a still hold that lasted long enough still edits on release
-    el.addEventListener('pointerup', () => { if (t && performance.now() - downAt >= HOLD_EDIT_MS) fire(); else cancel(); });
+    el.addEventListener('pointermove', (e) => { if ((t || waitUp) && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
+    // runs before the window's pointerup (which casts): a long still hold edits, anything drawn is left to the spell
+    el.addEventListener('pointerup', () => {
+      const pending = t || waitUp;
+      const still = !gesture || strokeLen(gesture.pts) < 40;
+      if (pending && still && performance.now() - downAt >= HOLD_EDIT_MS) fire(); else cancel();
+    });
     el.addEventListener('pointercancel', cancel);
-    // Chrome's long-press comes at ~0.5 s. While a spell hold is running it arms the spell (buzz) instead of
-    // editing, so a pause before drawing never turns into the edit dialog; the edit waits for HOLD_EDIT_MS.
-    el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (gesture) { if (!gesture.drawing) startDrawing(); return; } fire(); });
+    // Chrome's long-press (~0.5 s, raised even when JS timers run late) arms the spell; with no spell hold it edits
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (gesture) { if (!gesture.drawing) startDrawing(); return; } if (t) fire(); });
     // the click that ends a hold must not also tick the quest
     el.addEventListener('click', (e) => { if (el.__held) { e.stopPropagation(); setTimeout(() => { el.__held = false; }, 0); } }, true);
   }
