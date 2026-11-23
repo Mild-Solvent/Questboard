@@ -506,11 +506,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   // keep holding without moving until HOLD_EDIT_MS and it asks to edit the quest instead.
   const HOLD_EDIT_MS = 750;
   function onHold(el, fn, accept) {
-    let t = null, sx = 0, sy = 0;
+    let t = null, sx = 0, sy = 0, downAt = 0;
     const cancel = () => { clearTimeout(t); t = null; };
     el.addEventListener('pointerdown', (e) => {
       if (editing || (accept && !accept(e))) return;
-      el.__held = false; sx = e.clientX; sy = e.clientY;
+      el.__held = false; sx = e.clientX; sy = e.clientY; downAt = performance.now();
       cancel();
       t = setTimeout(fire, HOLD_EDIT_MS);
     });
@@ -521,9 +521,12 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       cancel(); dropGesture(); el.__held = true; api.vibrate(20); fn();
     };
     el.addEventListener('pointermove', (e) => { if (t && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
-    el.addEventListener('pointerup', cancel);
+    // a slow WebView can run the timer late: a still hold that lasted long enough still edits on release
+    el.addEventListener('pointerup', () => { if (t && performance.now() - downAt >= HOLD_EDIT_MS) fire(); else cancel(); });
     el.addEventListener('pointercancel', cancel);
-    el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (gesture && gesture.drawing) return; fire(); });   // mid-spell: the timer decides
+    // Chrome's long-press comes at ~0.5 s. While a spell hold is running it arms the spell (buzz) instead of
+    // editing, so a pause before drawing never turns into the edit dialog; the edit waits for HOLD_EDIT_MS.
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (gesture) { if (!gesture.drawing) startDrawing(); return; } fire(); });
     // the click that ends a hold must not also tick the quest
     el.addEventListener('click', (e) => { if (el.__held) { e.stopPropagation(); setTimeout(() => { el.__held = false; }, 0); } }, true);
   }
