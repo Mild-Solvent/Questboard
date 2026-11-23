@@ -6,10 +6,7 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
   const XP_PER_QUEST = 25;
-  const RANKS = {
-    tavern: ['Tavern Squire', 'Road Wanderer', 'Hedge Knight', 'Guild Adventurer', 'Dragon Botherer', 'Realm Champion', 'Living Legend', 'Myth Incarnate'],
-    abyss:  ['Shallow Shrimp', 'Reef Diver', 'Kelp Ranger', 'Trench Explorer', 'Kraken Wrangler', 'Tide Sovereign', 'Abyssal Legend', 'Leviathan'],
-  };
+  const { MAX_LEVEL, xpForLevel, levelInfo, rankName: rankFor, TIERS, tierIndex, tierColors } = window.Ranks;   // ranks.js (shared with Android)
   const GLYPHS = { echo: '⚔', money: '¢', skill: '✦', commit: '⚑', life: '☀', deadline: '⌛', someday: '☾', meta: '⚙' };
 
   // ---------- state ----------
@@ -39,31 +36,17 @@
   function saveSettings() { api.writeFile('settings.json', JSON.stringify(settings, null, 2)); }
 
   // ---------- XP / rank ----------
-  const xpForLevel = (lvl) => 100 + (lvl - 1) * 50;
   // XP only counts what came after the last reset (the quest history itself is kept)
   const entryXp = (e) => (e.secret ? 0 : Number(e.xp) || XP_PER_QUEST);   // secrets are just for fun: no XP
   const totalXp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : entryXp(e)), 0);
   const questLog = () => progress.log.filter((e) => !e.secret && !e.bonus);
 
-  // Rank tiers: every three levels the crest turns into a better metal or gem.
-  const TIERS = [
-    { name: 'Bronze', from: 1, a: '#ffd2a1', b: '#9a5320', glow: 'rgba(240,150,80,.55)' },
-    { name: 'Silver', from: 4, a: '#ffffff', b: '#8494a8', glow: 'rgba(220,235,255,.6)' },
-    { name: 'Gold', from: 7, a: '#fff4b0', b: '#c88a10', glow: 'rgba(255,205,60,.7)' },
-    { name: 'Emerald', from: 10, a: '#c4ffe0', b: '#0f8a4c', glow: 'rgba(60,230,140,.65)' },
-    { name: 'Sapphire', from: 13, a: '#cfe6ff', b: '#1f50c8', glow: 'rgba(80,150,255,.75)' },
-    { name: 'Ruby', from: 16, a: '#ffd0d6', b: '#b0142e', glow: 'rgba(255,60,90,.7)' },
-    { name: 'Amethyst', from: 19, a: '#f0dcff', b: '#7027b8', glow: 'rgba(180,90,255,.75)' },
-    { name: 'Diamond', from: 22, a: '#ffffff', b: '#6fd3ff', glow: 'rgba(190,240,255,.9)' },
-    { name: 'Mythic', from: 26, a: '#fff0b0', b: '#ff3fd0', glow: 'rgba(255,120,220,.9)' },
-  ];
-  const tierIndex = (level) => { let i = 0; TIERS.forEach((t, j) => { if (level >= t.from) i = j; }); return i; };
-  const tierColors = (t) => [t.a, t.b, '#ffffff', t.b, '#ffd36b'];
+  // Rank tiers: every few levels the crest turns into a better metal or gem (list in ranks.js).
   function applyTier(level) {
     const i = tierIndex(level), t = TIERS[i], root = document.documentElement.style;
     root.setProperty('--tier-a', t.a); root.setProperty('--tier-b', t.b); root.setProperty('--tier-glow', t.glow);
     $('#hero').dataset.tier = t.name.toLowerCase();
-    $('#hero').style.setProperty('--tier-i', i);
+    $('#hero').style.setProperty('--tier-i', Math.min(i, 12));   // glow and gleam speed stop growing after Mythic+
     $('#tier-name').textContent = t.name;
     return i;
   }
@@ -77,25 +60,15 @@
   let lastToday = null, lastHeat = null;
   const HEAT_COLORS = [null, ['#ffd36b', '#ffb347'], ['#ffb347', '#ff6a2b', '#ffd36b'], ['#ff6a2b', '#ff3b1f', '#ffd36b', '#fff1c2'],
     ['#9be7ff', '#ffffff', '#5ab8ff', '#ffd36b'], ['#ff5fd2', '#b36bff', '#ffffff', '#ffd36b', '#5ab8ff']];
-  function levelInfo(xp) {
-    let lvl = 1, rem = xp;
-    while (rem >= xpForLevel(lvl)) { rem -= xpForLevel(lvl); lvl++; }
-    return { level: lvl, into: rem, need: xpForLevel(lvl) };
-  }
-  function toRoman(n) { const m = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]; let s = ''; for (const [v, r] of m) while (n >= v) { s += r; n -= v; } return s; }
-  function rankName(level) {
-    const list = RANKS[settings.theme] || RANKS.tavern;
-    const idx = Math.min(list.length - 1, Math.floor((level - 1) / 2));
-    const tier = level > list.length * 2 ? ` ${toRoman(level - list.length * 2 + 1)}` : '';
-    return list[idx] + tier;
-  }
+  const rankName = (level) => rankFor(level, settings.theme);
   function renderHero() {
     const li = levelInfo(totalXp());
     $('#level-num').textContent = li.level;
     $('#rank-name').textContent = rankName(li.level);
     applyTier(li.level);
-    $('#xp-fill').style.width = `${Math.round((li.into / li.need) * 100)}%`;
-    $('#xp-label').textContent = `${li.into} / ${li.need} XP`;
+    $('#xp-fill').style.width = li.max ? '100%' : `${Math.round((li.into / li.need) * 100)}%`;
+    $('#xp-label').textContent = li.max ? `MAX · ${totalXp()} XP` : `${li.into} / ${li.need} XP`;
+    $('#hero').classList.toggle('max-level', !!li.max);
     const today = new Date().toDateString();
     const n = questLog().filter((e) => new Date(e.at).toDateString() === today).length;
     const heat = heatFor(n), box = $('#stat-today-box');
@@ -178,9 +151,35 @@
   }
 
   let editing = null, renderLater = false;      // an open inline editor holds off re-renders
+  // A re-render rebuilds every paper. Keep the view as it was (wall scroll, each list's own scroll,
+  // open "Completed" lists), so ticking a quest never throws you back to the top (0.7.0).
+  function viewState() {
+    const v = { top: boards.scrollTop, left: boards.scrollLeft, lists: {}, open: {} };
+    $$('.board-wrap', boards).forEach((w) => {
+      const k = w.dataset.group, q = $('.quests', w), dl = $('.done-list', w), d = $('.done-wrap', w);
+      v.lists[k] = [q ? q.scrollTop : 0, dl ? dl.scrollTop : 0];
+      if (d && d.open) v.open[k] = true;
+    });
+    return v;
+  }
+  function reopen(v) {
+    $$('.board-wrap', boards).forEach((w) => { const d = $('.done-wrap', w); if (d && !d.hidden && v.open[w.dataset.group]) d.open = true; });
+  }
+  function restoreScroll(v) {
+    const apply = () => {
+      boards.scrollLeft = v.left; boards.scrollTop = v.top;
+      $$('.board-wrap', boards).forEach((w) => {
+        const l = v.lists[w.dataset.group]; if (!l) return;
+        const q = $('.quests', w), dl = $('.done-list', w);
+        if (q) q.scrollTop = l[0];
+        if (dl) dl.scrollTop = l[1];
+      });
+    };
+    apply(); requestAnimationFrame(apply);
+  }
   function render() {
     if (editing) { renderLater = true; return; }
-    const scroll = boards.scrollTop;
+    const view = viewState();
     boards.innerHTML = '';
     boards.prepend(cutLayer);
     cutLayer.after(secretLayer);
@@ -247,9 +246,9 @@
       const dw = $('.done-wrap', el);
       if (done.length) { $('.done-count', el).textContent = `(${done.length})`; done.forEach((q) => $('.done-list', el).appendChild(questEl(g, q))); }
       else dw.hidden = true;
-      if (!g.items.length) {
+      {                         // 0.7.0: any paper can come down (asks first, and can be undone)
         const del = document.createElement('button');
-        del.type = 'button'; del.className = 'board-remove'; del.textContent = '✕'; del.title = 'Take this empty paper down';
+        del.type = 'button'; del.className = 'board-remove'; del.textContent = '✕'; del.title = 'Take this paper down';
         del.addEventListener('click', (e) => { e.stopPropagation(); takeDownPaper(g, wrap); });
         $('.board-head', el).appendChild(del);
       }
@@ -257,8 +256,9 @@
       boards.appendChild(wrap);
     });
     boards.appendChild(blankPaper());
-    boards.scrollTop = scroll;
+    reopen(view);
     applyLayout();
+    restoreScroll(view);       // after the layout: in free mode the papers only get their spots here
     renderHero();
   }
 
@@ -450,10 +450,13 @@
     if (e.button !== 0) return;
     const t = e.target;
     const onSign = !!t.closest('#hero') && !t.closest('button, .stat, .crest-wrap, .xp-bar');
-    if (!(onSign || t === boards || t === document.body || t.id === 'app' || t.classList.contains('canvas-spacer'))) return;
+    // 0.7.0: spells can be drawn over the papers and quests too (hold still first, then draw)
+    const onPaper = !onSign && !editing && !!t.closest('.board-wrap') && !t.closest(NO_CAST);
+    if (!(onSign || onPaper || t === boards || t === document.body || t.id === 'app' || t.classList.contains('canvas-spacer'))) return;
     Sound.unlock();
-    beginGesture(e);
+    beginGesture(e, onPaper);
   });
+  const NO_CAST = 'button, input, textarea, select, form, summary, a, .rune, .add-row, .inline-edit, [contenteditable="true"], .secret';
 
   function questEl(g, q) {
     const li = tplQuest.content.firstElementChild.cloneNode(true);
@@ -540,7 +543,7 @@
       if (progress.enchant && progress.enchant.key === norm(q.text)) progress.enchant = { key: null, at: entry.at };
       const comboHit = checkCombo();
       const after = levelInfo(totalXp()).level;
-      if (spellOn('lightning')) { Magic.bolt(cx, cy); Sound.thunder(); }
+      if (spellOn('lightning')) { Magic.bolt(cx, cy, { eel: settings.theme === 'abyss' }); Sound.thunder(); }
       if (li.className.includes('corrupt-')) { Sound.purify(); FX.burst(cx, cy, { count: 60, power: 1, colors: ['#c58cff', '#7a2dd6', '#ffffff', '#e6d0ff'] }); }
       li.classList.add('completing');
       FX.burst(cx, cy, { count: 90, power: 1.1 });
@@ -664,16 +667,28 @@
     b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     namePaper(b);
   }
-  function takeDownPaper(g, wrap) {
-    const i = doc.groups.indexOf(g);
-    if (i < 0 || g.items.length) return;
+  async function takeDownPaper(g, wrap) {
+    const n = g.items.filter((x) => x.type === 'quest' && !x.done).length;
+    const name = groupKey(g).replace(/^active:\s*/i, '').slice(0, 60);
+    const detail = g.items.length ? `"${name}" comes off the wall with everything on it${n ? ` (${n} open quest${n > 1 ? 's' : ''})` : ''}. XP you already earned stays.` : `"${name}" is empty.`;
+    if (!(await ask('Take this paper down?', detail, 'Take it down', true))) return;
+    g = (doc.groups.includes(g) ? g : doc.groups.find((x) => norm(groupKey(x)) === norm(groupKey(g))));
+    const i = g ? doc.groups.indexOf(g) : -1;
+    if (i < 0) return;
     doc.groups.splice(i, 1);
+    const pos = settings.layout && settings.layout.pos && settings.layout.pos[groupKey(g)];
     const r = wrap.getBoundingClientRect();
     FX.poof(r.left + r.width / 2, r.top + 20);
     wrap.classList.add('leaving');
-    toast(`Took down: ${groupKey(g).slice(0, 60)}`);
     changed();
     setTimeout(render, 400);
+    toast(`Took down: ${name}`, () => {
+      if (doc.groups.some((x) => norm(groupKey(x)) === norm(groupKey(g)))) return;
+      doc.groups.splice(Math.min(i, doc.groups.length), 0, g);
+      if (pos) { settings.layout.pos[groupKey(g)] = pos; saveSettings(); }
+      Sound.add(); changed(); render();
+      toast('Paper is back on the wall.');
+    });
   }
 
   function editBoardTitle(g, host, shown) {
@@ -691,16 +706,30 @@
     });
   }
 
-  function removeQuest(g, q, li) {
-    const i = g.items.indexOf(q);
+  // 0.7.0: every delete asks first and can be undone from the toast for a few seconds.
+  const findGroup = (g) => (doc.groups.includes(g) ? g : doc.groups.find((x) => norm(groupKey(x)) === norm(groupKey(g))));
+  async function removeQuest(g, q, li) {
+    if (!(await ask('Remove this quest?', q.text, 'Remove', true))) return;
+    // the board may have been re-read (sync) while the question was open: find the quest again by name
+    g = (doc.groups.includes(g) ? g : doc.groups.find((x) => norm(groupKey(x)) === norm(groupKey(g))));
+    if (!g) return;
+    const i = g.items.findIndex((x) => x === q || (x.type === 'quest' && norm(x.text) === norm(q.text)));
     if (i < 0) return;
+    q = g.items[i];
     g.items.splice(i, 1);
     const r = li.getBoundingClientRect();
     FX.poof(r.left + 18, r.top + 14);
     li.classList.add('leaving');
-    toast(`Removed: ${q.text.replace(/\*\*/g, '').slice(0, 60)}`);
     changed();
     setTimeout(render, 450);
+    toast(`Removed: ${q.text.replace(/\*\*/g, '').slice(0, 60)}`, () => {
+      const home = findGroup(g);
+      if (!home) { toast('Its paper is gone, so the quest can\'t come back.'); return; }
+      if (home.items.some((x) => x.type === 'quest' && norm(x.text) === norm(q.text))) return;
+      home.items.splice(Math.min(i, home.items.length), 0, q);
+      Sound.add(); changed(); render();
+      toast('Quest is back.');
+    });
   }
 
   function levelUp(level) {
@@ -708,7 +737,7 @@
     const ascended = ti > tierIndex(level - 1);
     banner(ascended ? `${t.name} rank!` : 'Level up!', `${level} — ${rankName(level)}`, true);
     const newSpell = SPELLS.find((s) => s.level === level);
-    if (newSpell) setTimeout(() => { banner(`New spell: ${newSpell.name}`, newSpell.how); refreshMagicUi(); }, 2600);
+    if (newSpell) setTimeout(() => { banner(`New spell: ${spellName(newSpell)}`, spellHow(newSpell)); refreshMagicUi(); }, 2600);
     Sound.levelUp();
     const app = $('#app');
     app.classList.remove('quaking'); void app.offsetWidth; app.classList.add('quaking');
@@ -1077,11 +1106,40 @@
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 1300);
   }
-  function toast(text) {
+  // toast(text) shows a note; toast(text, onUndo) adds an Undo button that stays for 7 seconds
+  function toast(text, onUndo) {
     $$('.toast').forEach((t) => t.remove());
     const el = document.createElement('div'); el.className = 'toast'; el.textContent = text;
+    if (onUndo) {
+      el.classList.add('has-undo');
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-undo'; b.textContent = 'Undo';
+      b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      b.addEventListener('click', (e) => { e.stopPropagation(); el.remove(); onUndo(); });
+      el.appendChild(b);
+    }
     document.body.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
+    setTimeout(() => el.remove(), onUndo ? 7000 : 3000);
+  }
+  // "Are you sure?" for anything that deletes. Resolves true only on the red button.
+  function ask(title, detail, yes, danger) {
+    $$('.confirm-wrap').forEach((w) => w.__done && w.__done(false));
+    return new Promise((resolve) => {
+      const wrap = document.createElement('div'); wrap.className = 'modal-wrap ritual confirm-wrap';
+      wrap.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true"><h3></h3><p></p><div class="modal-row"><span class="status"></span><span class="ritual-btns"><button class="btn" type="button">Cancel</button><button class="btn" type="button"></button></span></div></div>';
+      $('h3', wrap).textContent = title;
+      $('p', wrap).innerHTML = detail ? inline(String(detail)) : '';
+      const [no, ok] = $$('.ritual-btns .btn', wrap);
+      ok.textContent = yes || 'Yes'; ok.classList.add(danger ? 'danger' : 'primary');
+      const done = (v) => { wrap.remove(); window.removeEventListener('keydown', key, true); resolve(v); };
+      const key = (e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); done(false); } else if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); done(true); } };
+      wrap.__done = done;
+      no.addEventListener('click', () => done(false));
+      ok.addEventListener('click', () => done(true));
+      wrap.addEventListener('pointerdown', (e) => { e.stopPropagation(); if (e.target === wrap) done(false); });
+      window.addEventListener('keydown', key, true);
+      document.body.appendChild(wrap);
+      ok.focus();
+    });
   }
 
   // the wall behind the sign uses the same planks as the board wall, lined up with it
@@ -1104,6 +1162,9 @@
     { id: 'vortex', name: 'Vortex', level: 25, shape: 'spiral', how: 'Draw a spiral.' },
     { id: 'enchant', name: 'Enchant', scroll: true, how: 'Learned from a secret scroll. Hover a quest and press ✧: it glows and gives double XP. One at a time.' },
   ];
+  // the Abyss has its own name for every spell (and casts it differently, see castAt)
+  const spellName = (sp) => (settings.theme === 'abyss' && Magic.ABYSS_NAMES && Magic.ABYSS_NAMES[sp.id]) || sp.name;
+  const spellHow = (sp) => (settings.theme === 'abyss' ? sp.how.replace('a trail of fire', 'a trail of glowing bubbles').replace('strikes every', 'shocks every') : sp.how);
   const level = () => levelInfo(totalXp()).level;
   const secretKinds = () => new Set(progress.log.filter((e) => e.secret && e.kind).map((e) => e.kind));
   function learned(id) {
@@ -1196,11 +1257,25 @@
     const id = sp0 && sp0.id;
     if (!id) { Sound.fizzle(); FX.poof(end.x, end.y); return false; }
     const sp = SPELLS.find((s) => s.id === id);
-    if (!learned(id)) { Sound.fizzle(); FX.poof(end.x, end.y); toast(`You don't know ${sp.name} yet: it unlocks at level ${sp.level}.`); return false; }
-    if (id === 'circle') { Magic.circle(cx, cy, Math.max(160, Math.max(...xs) - Math.min(...xs) + 60), TIERS[tierIndex(level())].a); FX.burst(cx, cy, { count: 70, power: 1, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.cast(); }
+    if (!learned(id)) { Sound.fizzle(); FX.poof(end.x, end.y); toast('Nothing happens. You don\'t know that spell yet.'); return false; }
+    const col = TIERS[tierIndex(level())].a;
+    const size = Math.max(160, Math.max(...xs) - Math.min(...xs) + 60);
+    const sea = settings.theme === 'abyss' ? Magic.abyss : null;     // 0.7.0: the Abyss casts sea magic
+    if (sea) {
+      if (id === 'circle') { sea.circle(cx, cy, size); Sound.splash(); Sound.cast(); }
+      if (id === 'lightning') { sea.bolt(end.x, end.y); Sound.thunder(); }
+      if (id === 'rain') { sea.rainfall(15000); Sound.splash(); toast('Bubble storm: somebody opened the sea-floor vents.'); }
+      if (id === 'fireball') { sea.fireball(cx, cy); Sound.boom(); FX.shake($('#app'), 300); }
+      if (id === 'hearts') { sea.hearts(cx, cy); Sound.cast(); }
+      if (id === 'ward') { sea.ward(cx, cy); Sound.cast(); }
+      if (id === 'starfall') { sea.starfall(); Sound.cast(); }
+      if (id === 'vortex') { sea.vortex(cx, cy); Sound.splash(); Sound.cast(); }
+      if (id === 'meteor') { sea.meteor(end.x, end.y, () => { Sound.boom(); Sound.splash(); FX.shake($('#app'), 600); for (let i = 0; i < 3; i++) FX.splash(end.x + (Math.random() - 0.5) * 60, end.y + (Math.random() - 0.5) * 40); }); }
+      return true;
+    }
+    if (id === 'circle') { Magic.circle(cx, cy, size, col); FX.burst(cx, cy, { count: 70, power: 1, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.cast(); }
     if (id === 'lightning') { Magic.bolt(end.x, end.y); Sound.thunder(); FX.cut(end.x, end.y); }
     if (id === 'rain') { Magic.rainfall(15000); Sound.cast(); toast('Rainfall: the tavern roof is leaking again.'); }
-    const col = TIERS[tierIndex(level())].a;
     if (id === 'fireball') { Magic.fireball(cx, cy); Sound.boom(); FX.shake($('#app'), 300); }
     if (id === 'hearts') { Magic.hearts(cx, cy); Sound.cast(); }
     if (id === 'ward') { Magic.ward(cx, cy, col); Sound.cast(); }
@@ -1209,12 +1284,16 @@
     if (id === 'meteor') { Magic.meteor(end.x, end.y, () => { Sound.boom(); FX.shake($('#app'), 600); for (let i = 0; i < 3; i++) FX.cut(end.x + (Math.random() - 0.5) * 60, end.y + (Math.random() - 0.5) * 40); }); }
     return true;
   }
-  function beginGesture(e) {
-    gesture = { x: e.clientX, y: e.clientY, t: performance.now(), pts: [{ x: e.clientX, y: e.clientY }], drawing: false, id: e.pointerId, stroke: null };
-    gesture.timer = setTimeout(() => { if (gesture && !gesture.drawing) startDrawing(); }, 220);
+  // On bare wall a drag draws at once. On a paper you hold still first (so selecting text, dragging
+  // a board and double-click editing keep working); a quick click there does nothing.
+  function beginGesture(e, paper) {
+    gesture = { x: e.clientX, y: e.clientY, t: performance.now(), pts: [{ x: e.clientX, y: e.clientY }], drawing: false, id: e.pointerId, stroke: null, paper: !!paper };
+    gesture.timer = setTimeout(() => { if (gesture && !gesture.drawing) startDrawing(); }, paper ? 260 : 220);
   }
   function startDrawing() {
     gesture.drawing = true;
+    if (gesture.paper && drag && !drag.moved) drag = null;          // it's a spell, not a board drag
+    try { window.getSelection().removeAllRanges(); } catch { /* nothing selected */ }
     gesture.stroke = Magic.startStroke(TIERS[tierIndex(level())].a);
     for (const p of gesture.pts) gesture.stroke.add(p.x, p.y);
     document.documentElement.classList.add('casting');
@@ -1222,6 +1301,10 @@
   window.addEventListener('pointermove', (e) => {
     if (!gesture || e.pointerId !== gesture.id) return;
     const p = { x: e.clientX, y: e.clientY };
+    if (gesture.paper && !gesture.drawing) {
+      if (Math.hypot(p.x - gesture.x, p.y - gesture.y) > 8) { clearTimeout(gesture.timer); gesture = null; }   // selecting or dragging
+      return;
+    }
     gesture.pts.push(p);
     if (!gesture.drawing && Math.hypot(p.x - gesture.x, p.y - gesture.y) > 14) startDrawing();
     if (gesture.drawing) { gesture.stroke.add(p.x, p.y); if (Math.random() < 0.3) { FX.sparkle(p.x, p.y, { count: 1, spread: 4, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.draw(); } }
@@ -1231,29 +1314,36 @@
     const g = gesture; gesture = null; clearTimeout(g.timer);
     document.documentElement.classList.remove('casting');
     if (!g.drawing) {           // a plain click: a sword cut (Tavern) or a splash (Abyss), as before
+      if (g.paper) return;      // ...but never on a paper
       if (settings.theme === 'abyss') { FX.splash(g.x, g.y); Sound.splash(); }
       else { FX.cut(g.x, g.y); Sound.cut(); }
       return;
     }
+    castEndAt = performance.now();
     const kind = Magic.recognize(g.pts);
     g.stroke.end(castAt(kind, g.pts));
   }
+  // letting go of a spell over a quest must not also click (tick, edit) what is under the cursor
+  let castEndAt = 0;
+  for (const t of ['click', 'dblclick', 'contextmenu']) window.addEventListener(t, (e) => { if (castEndAt && performance.now() - castEndAt < 450) { e.stopPropagation(); e.preventDefault(); } }, true);
   window.addEventListener('pointerup', endGesture);
   window.addEventListener('pointercancel', (e) => { if (gesture && gesture.stroke) gesture.stroke.end(false); gesture = null; document.documentElement.classList.remove('casting'); });
 
   function openSpellbook() {
     const wrap = document.createElement('div'); wrap.className = 'modal-wrap spellbook-wrap';
     const lv = level();
-    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>You learn new spells as you level up. To cast, hold still on bare wall (or the sign) for a moment, then draw the shape in one stroke.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
+    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>New spells come as you level up. To cast, hold still for a moment on the wall, the sign or a paper (not on a button), then draw the shape in one stroke.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
     const list = $('.spell-list', wrap);
-    for (const sp of SPELLS) {
-      const ok = learned(sp.id);
-      const li = document.createElement('li'); li.className = ok ? 'known' : 'locked';
+    // 0.7.0: only the spells you own; what comes next stays a surprise
+    const owned = SPELLS.filter((sp) => learned(sp.id));
+    if (!owned.length) { const e = document.createElement('li'); e.className = 'empty-book'; e.textContent = 'The pages are blank. Keep clearing quests; something will appear.'; list.appendChild(e); }
+    for (const sp of owned) {
+      const li = document.createElement('li'); li.className = 'known';
       li.innerHTML = `<b></b><span class="req"></span><small></small>`;
-      $('b', li).textContent = ok ? sp.name : `${sp.name}`;
-      $('.req', li).textContent = ok ? 'learned' : sp.scroll ? 'find its scroll' : `level ${sp.level}`;
-      $('small', li).textContent = sp.how;
-      if (ok && sp.toggle) {
+      $('b', li).textContent = spellName(sp);
+      $('.req', li).textContent = 'learned';
+      $('small', li).textContent = spellHow(sp);
+      if (sp.toggle) {
         const t = document.createElement('button'); t.type = 'button'; t.className = 'btn seg' + (spellOn(sp.id) ? ' on' : '');
         t.textContent = spellOn(sp.id) ? 'on' : 'off';
         t.addEventListener('click', () => { settings.spells = settings.spells || {}; settings.spells[sp.id] = !spellOn(sp.id); saveSettings(); refreshMagicUi(); t.textContent = spellOn(sp.id) ? 'on' : 'off'; t.classList.toggle('on', spellOn(sp.id)); });
@@ -1516,6 +1606,7 @@
     applyWall();
     applySound();
     render();
+    setTimeout(() => document.documentElement.classList.add('booted'), 1600);   // 0.7.0: papers fly in once, not on every re-render
     refreshAutostart();
 
     Sync.configure(settings.sync);

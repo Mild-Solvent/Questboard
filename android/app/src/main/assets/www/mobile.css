@@ -248,3 +248,7 @@ html[data-night] #app::before { mix-blend-mode: normal; background: radial-gradi
 :root[data-theme="tavern"] .board { box-shadow: inset 0 0 0 2px rgba(110, 60, 18, .35), inset 0 0 12px 3px rgba(128, 70, 20, .5); }
 :root[data-theme="abyss"] .board { box-shadow: 0 0 8px rgba(255, 255, 255, .4), 0 0 20px rgba(60, 240, 255, .16); }
 :root[data-theme="abyss"] #hero { box-shadow: 0 0 14px rgba(255, 255, 255, .22), 0 0 28px rgba(60, 240, 255, .12); }
+
+/* 0.7.0: Undo on the toast is a real touch target */
+.toast.has-undo { white-space: normal; text-align: left; }
+.toast .toast-undo { min-height: 34px; padding: 6px 14px; font-size: 13.5px; flex: none; }

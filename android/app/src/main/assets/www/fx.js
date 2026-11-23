@@ -205,6 +205,10 @@
           c: pick(ember ? EMBER : palette[theme].trail), kind: 'trail', g: ember ? -0.02 : 0,
         });
       }
+      // the Abyss version of the ember trail: the cursor leaves glowing bubbles
+      if (trailMode === 'ember' && theme === 'abyss' && Math.random() < 0.5) {
+        parts.push({ x: mouse.x + rnd(-3, 3), y: mouse.y + rnd(-3, 3), vx: rnd(-0.3, 0.3), vy: -rnd(0.5, 1.5), life: 0, max: rnd(700, 1400), size: rnd(2, 5), c: pick(palette.abyss.trail), kind: 'bubble', g: -0.02, wob: rnd(0, 6) });
+      }
     }
   });
 
@@ -439,6 +443,19 @@
       parts.push({ x: rnd(-40, W), y: rnd(-30, -5), vx: 2.2, vy: rnd(13, 18), life: 0, max: rnd(900, 1400), size: rnd(1, 1.8), c: pick(['#cfe6ff', '#9fc8ff', '#ffffff']), kind: 'streak', g: 0.2, keep: true });
     }
   }
+  // bubbles floating up from a point (the Abyss spells)
+  function bubbles(x, y, opts = {}) {
+    const n = opts.count || 8, spread = opts.spread || 20, cols = opts.colors || palette.abyss.trail;
+    for (let i = 0; i < n; i++) {
+      parts.push({ x: x + rnd(-spread, spread), y: y + rnd(-spread, spread), vx: rnd(-0.6, 0.6), vy: -rnd(0.6, 2.4), life: 0, max: rnd(900, 2000), size: rnd(2, 7), c: pick(cols), kind: 'bubble', g: -0.02, wob: rnd(0, 6) });
+    }
+  }
+  // bubbles rising from the bottom edge over the whole window (the Abyss "Bubble storm")
+  function rise(n) {
+    for (let i = 0; i < n; i++) {
+      parts.push({ x: rnd(0, W), y: H + rnd(5, 30), vx: rnd(-0.3, 0.3), vy: -rnd(2.5, 6), life: 0, max: rnd(1800, 3200), size: rnd(2, 8), c: pick(['#c8f9ff', '#8df8ff', '#ffffff', '#3cf0ff']), kind: 'bubble', g: -0.01, wob: rnd(0, 6) });
+    }
+  }
   function setTrail(mode) { trailMode = mode; }
-  window.FX = { setLite, burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, drawCutOn: (ctx, c) => drawCut(c, ctx), sparkle, embers, nova, drops, setTrail, get theme() { return theme; } };
+  window.FX = { setLite, burst, poof, rain, cut, splash, setTheme, shake, setIdle, setMarkLayer, paintCut, drawCutOn: (ctx, c) => drawCut(c, ctx), sparkle, embers, nova, drops, bubbles, rise, setTrail, get theme() { return theme; } };
 })();

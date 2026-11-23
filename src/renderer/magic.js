@@ -184,23 +184,26 @@
   }
 
   // ---------- lightning ----------
-  function bolt(x, y) {
+  function bolt(x, y, opts = {}) {
     const svg = document.createElementNS(SVGNS, 'svg');
-    svg.setAttribute('class', 'bolt-svg');
+    svg.setAttribute('class', opts.eel ? 'bolt-svg eel' : 'bolt-svg');
     const mk = (x0, y0, x1, y1, spread) => {
       const pts = [[x0, y0]]; const steps = 12;
       for (let i = 1; i < steps; i++) { const t = i / steps; pts.push([x0 + (x1 - x0) * t + rnd(-spread, spread), y0 + (y1 - y0) * t]); }
       pts.push([x1, y1]); return pts;
     };
-    const main = mk(x + rnd(-120, 120), -10, x, y, 26);
+    // the eel strikes up from the sea floor; lightning comes down from the sky
+    const main = opts.eel ? mk(x + rnd(-160, 160), window.innerHeight + 10, x, y, 34) : mk(x + rnd(-120, 120), -10, x, y, 26);
     const paths = [main];
-    for (let i = 0; i < 3; i++) { const p = main[3 + ((Math.random() * 7) | 0)]; paths.push(mk(p[0], p[1], p[0] + rnd(-90, 90), p[1] + rnd(40, 120), 14)); }
+    for (let i = 0; i < 3; i++) { const p = main[3 + ((Math.random() * 7) | 0)]; paths.push(mk(p[0], p[1], p[0] + rnd(-90, 90), p[1] + (opts.eel ? -rnd(40, 120) : rnd(40, 120)), 14)); }
     svg.innerHTML = paths.map((p, i) => `<polyline class="${i ? 'branch' : 'main'}" points="${p.map((q) => q.join(',')).join(' ')}"/>`).join('');
     layer.appendChild(svg);
-    setTimeout(() => svg.remove(), 520);
+    setTimeout(() => svg.remove(), opts.eel ? 640 : 520);
     const flash = document.getElementById('flash');
-    if (flash) { flash.style.setProperty('--flash', 'rgba(190,220,255,.7)'); flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on'); }
-    if (window.FX) { FX.burst(x, y, { count: 50, power: 1.1, colors: ['#ffffff', '#cfe6ff', '#8fd0ff', '#fff4b0'] }); FX.sparkle(x, y, { count: 10, spread: 40, colors: ['#ffffff', '#cfe6ff'], big: true }); }
+    if (flash) { flash.style.setProperty('--flash', opts.eel ? 'rgba(60,240,255,.55)' : 'rgba(190,220,255,.7)'); flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on'); }
+    const cols = opts.eel ? ['#ffffff', '#3cf0ff', '#7df9d6', '#c8fff4'] : ['#ffffff', '#cfe6ff', '#8fd0ff', '#fff4b0'];
+    if (window.FX) { FX.burst(x, y, { count: 50, power: 1.1, colors: cols }); FX.sparkle(x, y, { count: 10, spread: 40, colors: [cols[0], cols[1]], big: true }); }
+    if (opts.eel) bubbles(x, y, 16, 30);
   }
 
   // ---------- the shape you drew, burned into the air for a moment ----------
@@ -305,6 +308,124 @@
     }, 60);
   }
 
+  // ---------- the Abyss casts its own spells (0.7.0): same shapes, sea-floor magic ----------
+  const SEA = ['#3cf0ff', '#8df8ff', '#7df9d6', '#ffffff', '#b36bff'];
+  function bubbles(x, y, n = 24, spread = 40, cols = SEA) {
+    if (!window.FX || !FX.bubbles) return;
+    FX.bubbles(x, y, { count: n, spread, colors: cols });
+  }
+  function emojiAt(ch, x, y, cls, ms, size) {
+    const e = document.createElement('span');
+    e.className = `sea-emoji ${cls || ''}`; e.textContent = ch;
+    if (size) e.style.fontSize = `${size}px`;
+    pin(e, x, y);
+    setTimeout(() => e.remove(), ms);
+    return e;
+  }
+  // circle: a ring of bubbles bursts outward
+  function bubbleRing(x, y, size = 240, color = '#3cf0ff') {
+    shapeGlow('circle', x, y, size, color);
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2, r = size * 0.42;
+      setTimeout(() => bubbles(x + Math.cos(a) * r, y + Math.sin(a) * r, 3, 6), i * 18);
+    }
+    if (window.FX) FX.burst(x, y, { count: 50, power: 0.9, colors: SEA });
+  }
+  // triangle: an octopus lets go of an ink bomb
+  function inkBomb(x, y) {
+    shapeGlow('triangle', x, y, 220, '#b36bff');
+    const ink = document.createElement('div'); ink.className = 'ink-cloud';
+    pin(ink, x, y);
+    setTimeout(() => ink.remove(), 2600);
+    emojiAt('🐙', x, y, 'sea-pop', 1600, 54);
+    if (window.FX) { FX.burst(x, y, { count: 90, power: 1.4, colors: ['#1a0b2e', '#3a1866', '#7a2dd6', '#b36bff', '#e6d0ff'] }); FX.nova(x, y, ['#7a2dd6', '#b36bff', '#3cf0ff']); }
+    bubbles(x, y, 30, 60);
+  }
+  // heart: jellyfish drift up, pulsing
+  function jellyBloom(x, y, n = 14) {
+    shapeGlow('heart', x, y, 180, '#ff8fd8');
+    for (let i = 0; i < n; i++) {
+      const j = document.createElement('span');
+      j.className = 'float-heart float-jelly';
+      j.textContent = ['🪼', '🪼', '🫧', '💗'][(Math.random() * 4) | 0];
+      j.style.fontSize = `${rnd(18, 38) | 0}px`;
+      j.style.setProperty('--dx', `${rnd(-70, 70) | 0}px`);
+      j.style.animationDelay = `${rnd(0, 0.8).toFixed(2)}s`;
+      pin(j, x + rnd(-80, 80), y + rnd(-20, 40));
+      setTimeout(() => j.remove(), 4400);
+    }
+  }
+  // zigzag: an electric eel shocks the spot, from the sea floor up
+  function eelShock(x, y) { bolt(x, y, { eel: true }); }
+  // square: a shield of bubbles around the whole wall
+  function bubbleShield(x, y) {
+    ward(x, y, '#3cf0ff');
+    const W = window.innerWidth, H = window.innerHeight;
+    for (let i = 0; i < 40; i++) {
+      const t = i / 40, side = i % 4;
+      const px = side === 0 ? t * W : side === 1 ? W - 14 : side === 2 ? (1 - t) * W : 14;
+      const py = side === 0 ? 14 : side === 1 ? t * H : side === 2 ? H - 14 : (1 - t) * H;
+      setTimeout(() => window.FX && FX.bubbles && FX.bubbles(px, py, { count: 3, spread: 10, colors: SEA, screen: true }), i * 25);
+    }
+  }
+  // swipe down: the vents open and bubbles rise everywhere
+  let stormTimer = null;
+  function bubbleStorm(ms = 15000) {
+    clearInterval(stormTimer);
+    const until = performance.now() + ms;
+    document.documentElement.classList.add('bubbling');
+    stormTimer = setInterval(() => {
+      if (performance.now() > until) { clearInterval(stormTimer); document.documentElement.classList.remove('bubbling'); return; }
+      if (window.FX && FX.rise) FX.rise(6);
+    }, 70);
+  }
+  // star: starfish sink and spin down the wall
+  function starfishRain(n = 18) {
+    for (let i = 0; i < n; i++) {
+      setTimeout(() => {
+        const s = document.createElement('span');
+        s.className = 'starfish';
+        s.textContent = '★';
+        s.style.left = `${rnd(4, 96)}%`;
+        s.style.color = ['#ff8a5c', '#ffb36b', '#ff6fa8', '#ffd36b'][(Math.random() * 4) | 0];
+        s.style.fontSize = `${rnd(18, 34) | 0}px`;
+        s.style.setProperty('--spin', `${rnd(-540, 540) | 0}deg`);
+        s.style.animationDuration = `${rnd(2.6, 4.2).toFixed(2)}s`;
+        layer.appendChild(s);
+        setTimeout(() => s.remove(), 4400);
+      }, i * rnd(60, 140));
+    }
+  }
+  // diagonal slash: a shark dives at the spot
+  function sharkDive(x, y, onImpact) {
+    const el = document.createElement('span');
+    el.className = 'sea-emoji shark';
+    el.textContent = '🦈';
+    layer.appendChild(el);
+    const sx = x + 460, sy = y - 300;
+    const anim = el.animate([{ transform: `translate(${sx}px, ${sy}px) scaleX(1) rotate(-30deg) scale(.7)` }, { transform: `translate(${x}px, ${y}px) scaleX(1) rotate(-30deg) scale(1.3)` }], { duration: 560, easing: 'cubic-bezier(.5,0,.9,.6)', fill: 'forwards' });
+    const trail = setInterval(() => { const r = el.getBoundingClientRect(); if (window.FX && FX.bubbles) FX.bubbles(r.left + r.width / 2, r.top + r.height / 2, { count: 3, spread: 8, colors: SEA, screen: true }); }, 30);
+    anim.onfinish = () => {
+      clearInterval(trail); el.remove();
+      if (window.FX) { FX.nova(x, y, ['#3cf0ff', '#ffffff', '#7df9d6']); FX.burst(x, y, { count: 140, power: 1.7, colors: SEA }); }
+      emojiAt('🦈', x, y, 'sea-pop', 900, 60);
+      if (onImpact) onImpact();
+    };
+  }
+  // spiral: a whirlpool with fish caught in it
+  function whirlpool(x, y) {
+    vortex(x, y);
+    const fish = ['🐟', '🐠', '🐡', '🦐', '🐟'];
+    fish.forEach((f, i) => {
+      const e = emojiAt(f, x, y, 'whirl-fish', 2200, 26);
+      e.style.setProperty('--a0', `${(i / fish.length) * 360}deg`);
+      e.style.animationDelay = `${i * 0.06}s`;
+    });
+    bubbles(x, y, 30, 90);
+  }
+  const ABYSS_NAMES = { ember: 'Glow trail', circle: 'Bubble ring', fireball: 'Ink bomb', hearts: 'Jellyfish bloom', lightning: 'Eel shock', ward: 'Bubble shield', rain: 'Bubble storm', starfall: 'Starfish rain', meteor: 'Shark dive', vortex: 'Whirlpool', enchant: "Siren's blessing" };
+  const abyss = { circle: bubbleRing, fireball: inkBomb, hearts: jellyBloom, bolt: eelShock, ward: bubbleShield, rainfall: bubbleStorm, starfall: starfishRain, meteor: sharkDive, vortex: whirlpool };
+
   // ---------- night candles ----------
   let candles = null;
   function setNight(on) {
@@ -359,5 +480,5 @@
   }
   function closeGarden() { clearInterval(gardenTimer); document.querySelectorAll('.garden-wrap').forEach((w) => w.remove()); }
 
-  window.Magic = { setScroller, recognize, startStroke, circle, bolt, meteor, rainfall, fireball, ward, starfall, hearts, vortex, shapeGlow, setNight, openGarden, closeGarden, FAMILIARS };
+  window.Magic = { setScroller, recognize, startStroke, circle, bolt, meteor, rainfall, fireball, ward, starfall, hearts, vortex, shapeGlow, setNight, openGarden, closeGarden, FAMILIARS, abyss, ABYSS_NAMES };
 })();

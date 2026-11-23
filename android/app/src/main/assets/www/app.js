@@ -12,10 +12,8 @@
   const UPDATE_FEED = 'https://api.github.com/repos/Mild-Solvent/Questboard/releases/latest';
   const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000;
   const SYNC_GUIDE_URL = 'https://github.com/Mild-Solvent/Questboard/blob/main/docs/SYNC.md';
-  const RANKS = {
-    tavern: ['Tavern Squire', 'Road Wanderer', 'Hedge Knight', 'Guild Adventurer', 'Dragon Botherer', 'Realm Champion', 'Living Legend', 'Myth Incarnate'],
-    abyss:  ['Shallow Shrimp', 'Reef Diver', 'Kelp Ranger', 'Trench Explorer', 'Kraken Wrangler', 'Tide Sovereign', 'Abyssal Legend', 'Leviathan'],
-  };
+  // ranks, crest tiers and the XP curve live in ranks.js, shared with the desktop (0.7.0: up to level 100)
+  const { xpForLevel, levelInfo, rankName: rankFor, TIERS, tierIndex, tierColors } = window.Ranks;
   const STARTER = `# Quests
 
 This is your questboard. Set up sync in the settings (gear icon) to see the same quests as on your PC.
@@ -58,25 +56,12 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   const xp = () => progress.log.reduce((n, e) => n + (progress.resetAt && e.at <= progress.resetAt ? 0 : entryXp(e)), 0);
   const questLog = () => progress.log.filter((e) => !e.secret && !e.bonus);
 
-  // Rank tiers: every three levels the crest turns into a better metal or gem.
-  const TIERS = [
-    { name: 'Bronze', from: 1, a: '#ffd2a1', b: '#9a5320', glow: 'rgba(240,150,80,.55)' },
-    { name: 'Silver', from: 4, a: '#ffffff', b: '#8494a8', glow: 'rgba(220,235,255,.6)' },
-    { name: 'Gold', from: 7, a: '#fff4b0', b: '#c88a10', glow: 'rgba(255,205,60,.7)' },
-    { name: 'Emerald', from: 10, a: '#c4ffe0', b: '#0f8a4c', glow: 'rgba(60,230,140,.65)' },
-    { name: 'Sapphire', from: 13, a: '#cfe6ff', b: '#1f50c8', glow: 'rgba(80,150,255,.75)' },
-    { name: 'Ruby', from: 16, a: '#ffd0d6', b: '#b0142e', glow: 'rgba(255,60,90,.7)' },
-    { name: 'Amethyst', from: 19, a: '#f0dcff', b: '#7027b8', glow: 'rgba(180,90,255,.75)' },
-    { name: 'Diamond', from: 22, a: '#ffffff', b: '#6fd3ff', glow: 'rgba(190,240,255,.9)' },
-    { name: 'Mythic', from: 26, a: '#fff0b0', b: '#ff3fd0', glow: 'rgba(255,120,220,.9)' },
-  ];
-  const tierIndex = (level) => { let i = 0; TIERS.forEach((t, j) => { if (level >= t.from) i = j; }); return i; };
-  const tierColors = (t) => [t.a, t.b, '#ffffff', t.b, '#ffd36b'];
+  // Rank tiers: every few levels the crest turns into a better metal or gem (list in ranks.js).
   function applyTier(level) {
     const i = tierIndex(level), t = TIERS[i], root = document.documentElement.style;
     root.setProperty('--tier-a', t.a); root.setProperty('--tier-b', t.b); root.setProperty('--tier-glow', t.glow);
     $('#hero').dataset.tier = t.name.toLowerCase();
-    $('#hero').style.setProperty('--tier-i', i);
+    $('#hero').style.setProperty('--tier-i', Math.min(i, 12));   // glow and gleam speed stop growing after Mythic+
     $('#tier-name').textContent = t.name;
     return i;
   }
@@ -90,27 +75,16 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   let lastToday = null, lastHeat = null;
   const HEAT_COLORS = [null, ['#ffd36b', '#ffb347'], ['#ffb347', '#ff6a2b', '#ffd36b'], ['#ff6a2b', '#ff3b1f', '#ffd36b', '#fff1c2'],
     ['#9be7ff', '#ffffff', '#5ab8ff', '#ffd36b'], ['#ff5fd2', '#b36bff', '#ffffff', '#ffd36b', '#5ab8ff']];
-  const xpForLevel = (lvl) => 100 + (lvl - 1) * 50;
-  function levelInfo(total) {
-    let lvl = 1, rem = total;
-    while (rem >= xpForLevel(lvl)) { rem -= xpForLevel(lvl); lvl++; }
-    return { level: lvl, into: rem, need: xpForLevel(lvl) };
-  }
-  function rankName(level) {
-    const list = RANKS[prefs.theme] || RANKS.tavern;
-    const idx = Math.min(list.length - 1, Math.floor((level - 1) / 2));
-    const tier = level > list.length * 2 ? ` ${toRoman(level - list.length * 2 + 1)}` : '';
-    return list[idx] + tier;
-  }
-  function toRoman(n) { const m = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]; let s = ''; for (const [v, r] of m) while (n >= v) { s += r; n -= v; } return s; }
+  const rankName = (level) => rankFor(level, prefs.theme);
 
   function renderHero() {
     const li = levelInfo(xp());
     $('#level-num').textContent = li.level;
     $('#rank-name').textContent = rankName(li.level);
     applyTier(li.level);
-    $('#xp-fill').style.width = `${Math.round((li.into / li.need) * 100)}%`;
-    $('#xp-label').textContent = `${li.into} / ${li.need} XP`;
+    $('#xp-fill').style.width = li.max ? '100%' : `${Math.round((li.into / li.need) * 100)}%`;
+    $('#xp-label').textContent = li.max ? 'MAX' : `${li.into} / ${li.need} XP`;
+    $('#hero').classList.toggle('max-level', !!li.max);
     const today = new Date().toDateString();
     const n = questLog().filter((e) => new Date(e.at).toDateString() === today).length;
     const heat = heatFor(n), box = $('#stat-today-box');
@@ -200,9 +174,36 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   let editing = null, renderLater = false;      // an open inline editor holds off re-renders (sync, timers)
   const backHandlers = new Set();                // the phone's back button cancels an open editor
   api.on('back', () => { for (const f of backHandlers) if (f()) return true; return false; });
+  // A re-render rebuilds every paper. Keep the view as it was (wall scroll, each list's own scroll,
+  // open "Completed" lists), so ticking a quest never throws you back to the top (0.7.0).
+  function viewState() {
+    const se = document.scrollingElement || document.documentElement;
+    const v = { top: boards.scrollTop, page: se.scrollTop, lists: {}, open: {} };
+    $$('.board-wrap', boards).forEach((w) => {
+      const k = w.dataset.group, q = $('.quests', w), dl = $('.done-list', w), d = $('.done-wrap', w);
+      v.lists[k] = [q ? q.scrollTop : 0, dl ? dl.scrollTop : 0];
+      if (d && d.open) v.open[k] = true;
+    });
+    return v;
+  }
+  function restoreView(v) {
+    $$('.board-wrap', boards).forEach((w) => { const d = $('.done-wrap', w); if (d && !d.hidden && v.open[w.dataset.group]) d.open = true; });
+    const apply = () => {
+      boards.scrollTop = v.top;
+      const se = document.scrollingElement || document.documentElement;
+      if (se.scrollTop !== v.page) se.scrollTop = v.page;
+      $$('.board-wrap', boards).forEach((w) => {
+        const l = v.lists[w.dataset.group]; if (!l) return;
+        const q = $('.quests', w), dl = $('.done-list', w);
+        if (q) q.scrollTop = l[0];
+        if (dl) dl.scrollTop = l[1];
+      });
+    };
+    apply(); requestAnimationFrame(apply);
+  }
   function render() {
     if (editing) { renderLater = true; return; }
-    const scrollTop = boards.scrollTop;
+    const view = viewState();
     boards.innerHTML = '';
     boards.prepend(cutLayer);
     cutLayer.after(secretLayer);
@@ -272,9 +273,9 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
         done.forEach((q) => dl.appendChild(questEl(g, q)));
       } else dw.hidden = true;
 
-      if (!g.items.length) {                     // desktop 0.6.2: an empty paper can be taken down (asks first)
+      {                                          // 0.7.0: any paper can be taken down (asks first, can be undone)
         const del = document.createElement('button');
-        del.type = 'button'; del.className = 'board-remove'; del.textContent = '✕'; del.title = 'Take this empty paper down';
+        del.type = 'button'; del.className = 'board-remove'; del.textContent = '✕'; del.title = 'Take this paper down';
         del.addEventListener('click', (e) => { e.stopPropagation(); takeDownPaper(g, wrap); });
         $('.board-head', el).appendChild(del);
       }
@@ -282,7 +283,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       boards.appendChild(wrap);
     });
     boards.appendChild(blankPaper());
-    boards.scrollTop = scrollTop;
+    restoreView(view);
     renderHero();
   }
 
@@ -433,7 +434,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       if (progress.enchant && progress.enchant.key === norm(q.text)) progress.enchant = { key: null, at: entry.at };
       const comboHit = checkCombo();
       const after = levelInfo(xp()).level;
-      if (spellOn('lightning')) { Magic.bolt(cx, cy); Sound.thunder && Sound.thunder(); }
+      if (spellOn('lightning')) { Magic.bolt(cx, cy, { eel: prefs.theme === 'abyss' }); Sound.thunder && Sound.thunder(); }
       if (li.className.includes('corrupt-')) { Sound.purify && Sound.purify(); FX.burst(cx, cy, { count: 60, power: 1, colors: ['#c58cff', '#7a2dd6', '#ffffff', '#e6d0ff'] }); }
 
       li.classList.add('completing');
@@ -501,6 +502,9 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     });
   }
   // ---------- inline editing (desktop 0.4.7: double-click; phone: press and hold) ----------
+  // 0.7.0: a spell can be drawn from a quest too. Hold still: at HOLD_MS it buzzes and you can draw;
+  // keep holding without moving until HOLD_EDIT_MS and it asks to edit the quest instead.
+  const HOLD_EDIT_MS = 750;
   function onHold(el, fn, accept) {
     let t = null, sx = 0, sy = 0;
     const cancel = () => { clearTimeout(t); t = null; };
@@ -508,14 +512,18 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
       if (editing || (accept && !accept(e))) return;
       el.__held = false; sx = e.clientX; sy = e.clientY;
       cancel();
-      t = setTimeout(fire, 520);
+      t = setTimeout(fire, HOLD_EDIT_MS);
     });
     // Chrome's own long-press (contextmenu) also opens it, so a busy page can't miss the hold
-    const fire = () => { if (!t) return; cancel(); el.__held = true; api.vibrate(20); fn(); };
+    const fire = () => {
+      if (!t) return;
+      if (gesture && gesture.drawing && gesture.pts.length > 3) { cancel(); return; }   // they are drawing a spell
+      cancel(); dropGesture(); el.__held = true; api.vibrate(20); fn();
+    };
     el.addEventListener('pointermove', (e) => { if (t && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
     el.addEventListener('pointerup', cancel);
     el.addEventListener('pointercancel', cancel);
-    el.addEventListener('contextmenu', (e) => { e.preventDefault(); fire(); });
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (gesture && gesture.drawing) return; fire(); });   // mid-spell: the timer decides
     // the click that ends a hold must not also tick the quest
     el.addEventListener('click', (e) => { if (el.__held) { e.stopPropagation(); setTimeout(() => { el.__held = false; }, 0); } }, true);
   }
@@ -608,18 +616,29 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     namePaper(b);
   }
+  // 0.7.0: any paper can come down, with everything on it; asks first and can be undone from the toast
   async function takeDownPaper(g, wrap) {
-    if (g.items.length) return;
-    if (!(await ask('Take this paper down?', `"${groupKey(g).slice(0, 60)}" is empty. It goes off the wall on every device.`, 'Take down', true))) return;
-    const i = doc.groups.indexOf(g);
-    if (i < 0 || g.items.length) return;
+    const n = g.items.filter((x) => x.type === 'quest' && !x.done).length;
+    const name = groupKey(g).replace(/^active:\s*/i, '').slice(0, 60);
+    const detail = g.items.length ? `"${name}" comes off the wall on every device, with everything on it${n ? ` (${n} open quest${n > 1 ? 's' : ''})` : ''}. XP you already earned stays.` : `"${name}" is empty. It goes off the wall on every device.`;
+    if (!(await ask('Take this paper down?', detail, 'Take it down', true))) return;
+    g = (doc.groups.includes(g) ? g : doc.groups.find((x) => norm(groupKey(x)) === norm(groupKey(g))));
+    const i = g ? doc.groups.indexOf(g) : -1;
+    if (i < 0) return;
     doc.groups.splice(i, 1);
     const r = wrap.getBoundingClientRect();
     FX.poof(r.left + r.width / 2, r.top + 20);
     wrap.classList.add('leaving');
-    toast(`Took down: ${groupKey(g).slice(0, 60)}`);
+    api.vibrate(20);
     persist();
     setTimeout(render, 400);
+    toast(`Took down: ${name}`, () => {
+      if (doc.groups.some((x) => norm(groupKey(x)) === norm(groupKey(g)))) return;
+      doc.groups.splice(Math.min(i, doc.groups.length), 0, g);
+      Sound.add && Sound.add(); api.vibrate(15);
+      persist(); render();
+      toast('Paper is back on the wall.');
+    });
   }
 
   function editBoardTitle(g, host, shown) {
@@ -635,16 +654,28 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   }
 
   function removeQuest(g, q, li) {
-    const i = g.items.indexOf(q);
+    // the board may have been re-read (sync) while the question was open: find the quest again by name
+    g = (doc.groups.includes(g) ? g : doc.groups.find((x) => norm(groupKey(x)) === norm(groupKey(g))));
+    if (!g) return;
+    const i = g.items.findIndex((x) => x === q || (x.type === 'quest' && norm(x.text) === norm(q.text)));
     if (i < 0) return;
+    q = g.items[i];
     g.items.splice(i, 1);
     const r = li.getBoundingClientRect();
     FX.poof(r.left + 18, r.top + 14);
     li.classList.add('leaving');
     api.vibrate(20);
-    toast(`Removed: ${q.text.replace(/\*\*/g, '').slice(0, 60)}`);
     persist();
     setTimeout(render, 450);
+    toast(`Removed: ${q.text.replace(/\*\*/g, '').slice(0, 60)}`, () => {
+      const home = doc.groups.includes(g) ? g : doc.groups.find((x) => norm(groupKey(x)) === norm(groupKey(g)));
+      if (!home) { toast('Its paper is gone, so the quest can\'t come back.'); return; }
+      if (home.items.some((x) => x.type === 'quest' && norm(x.text) === norm(q.text))) return;
+      home.items.splice(Math.min(i, home.items.length), 0, q);
+      Sound.add && Sound.add(); api.vibrate(15);
+      persist(); render();
+      toast('Quest is back.');
+    });
   }
 
   function levelUp(level) {
@@ -652,7 +683,7 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const ascended = ti > tierIndex(level - 1);
     banner(ascended ? `${t.name} rank!` : 'Level up!', `${level} — ${rankName(level)}`, true);
     const newSpell = SPELLS.find((s) => s.level === level);
-    if (newSpell) setTimeout(() => { banner(`New spell: ${newSpell.name}`, newSpell.how); refreshMagicUi(); }, 2600);
+    if (newSpell) setTimeout(() => { banner(`New spell: ${spellName(newSpell)}`, spellHow(newSpell)); refreshMagicUi(); }, 2600);
     Sound.levelUp();
     api.vibrate(ascended ? 260 : 120);
     const app = $('#app');
@@ -910,6 +941,9 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     { id: 'vortex', name: 'Vortex', level: 25, shape: 'spiral', how: 'Draw a spiral.' },
     { id: 'enchant', name: 'Enchant', scroll: true, how: 'Learned from a secret scroll. Tap ✧ on a quest: it glows and gives double XP. One at a time.' },
   ];
+  // the Abyss has its own name for every spell (and casts it differently, see castAt)
+  const spellName = (sp) => (prefs.theme === 'abyss' && Magic.ABYSS_NAMES && Magic.ABYSS_NAMES[sp.id]) || sp.name;
+  const spellHow = (sp) => (prefs.theme === 'abyss' ? sp.how.replace('a trail of fire', 'a trail of glowing bubbles').replace('strikes every', 'shocks every') : sp.how);
   const level = () => levelInfo(xp()).level;
   const secretKinds = () => new Set(progress.log.filter((e) => e.secret && e.kind).map((e) => e.kind));
   function learned(id) {
@@ -998,11 +1032,27 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     const id = sp0 && sp0.id;
     if (!id) { Sound.fizzle && Sound.fizzle(); FX.poof(end.x, end.y); return false; }
     const sp = SPELLS.find((s) => s.id === id);
-    if (!learned(id)) { Sound.fizzle && Sound.fizzle(); FX.poof(end.x, end.y); toast(`You don't know ${sp.name} yet: it unlocks at level ${sp.level}.`); return false; }
-    if (id === 'circle') { Magic.circle(cx, cy, Math.max(140, Math.max(...xs) - Math.min(...xs) + 60), TIERS[tierIndex(level())].a); FX.burst(cx, cy, { count: 60, power: 1, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.cast && Sound.cast(); }
+    if (!learned(id)) { Sound.fizzle && Sound.fizzle(); FX.poof(end.x, end.y); toast('Nothing happens. You don\'t know that spell yet.'); return false; }
+    const col = TIERS[tierIndex(level())].a;
+    const size = Math.max(140, Math.max(...xs) - Math.min(...xs) + 60);
+    const S = (n) => Sound[n] && Sound[n]();
+    const sea = prefs.theme === 'abyss' ? Magic.abyss : null;     // 0.7.0: the Abyss casts sea magic
+    if (sea) {
+      if (id === 'circle') { sea.circle(cx, cy, size); S('splash'); S('cast'); }
+      if (id === 'lightning') { sea.bolt(end.x, end.y); S('thunder'); api.vibrate(50); }
+      if (id === 'rain') { sea.rainfall(15000); S('splash'); toast('Bubble storm: somebody opened the sea-floor vents.'); }
+      if (id === 'fireball') { sea.fireball(cx, cy); S('boom'); FX.shake($('#app'), 300); api.vibrate(60); }
+      if (id === 'hearts') { sea.hearts(cx, cy); S('cast'); }
+      if (id === 'ward') { sea.ward(cx, cy); S('cast'); }
+      if (id === 'starfall') { sea.starfall(); S('cast'); }
+      if (id === 'vortex') { sea.vortex(cx, cy); S('splash'); S('cast'); }
+      if (id === 'meteor') { sea.meteor(end.x, end.y, () => { S('boom'); S('splash'); FX.shake($('#app'), 600); api.vibrate(120); for (let i = 0; i < 3; i++) FX.splash(end.x + (Math.random() - 0.5) * 60, end.y + (Math.random() - 0.5) * 40); }); }
+      api.vibrate(30);
+      return true;
+    }
+    if (id === 'circle') { Magic.circle(cx, cy, size, col); FX.burst(cx, cy, { count: 60, power: 1, colors: tierColors(TIERS[tierIndex(level())]) }); Sound.cast && Sound.cast(); }
     if (id === 'lightning') { Magic.bolt(end.x, end.y); Sound.thunder && Sound.thunder(); FX.cut(end.x, end.y); }
     if (id === 'rain') { Magic.rainfall(15000); Sound.cast && Sound.cast(); toast('Rainfall: the tavern roof is leaking again.'); }
-    const col = TIERS[tierIndex(level())].a;
     if (id === 'fireball') { Magic.fireball(cx, cy); Sound.boom && Sound.boom(); FX.shake($('#app'), 300); api.vibrate(60); }
     if (id === 'hearts') { Magic.hearts(cx, cy); Sound.cast && Sound.cast(); }
     if (id === 'ward') { Magic.ward(cx, cy, col); Sound.cast && Sound.cast(); }
@@ -1020,11 +1070,23 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     document.documentElement.classList.add('casting');
     api.vibrate(15);
   }
+  // 0.7.0: on a phone the papers cover nearly all of the wall, so a spell can start on a paper or a
+  // quest too (not on a button, the rune or a text field). Moving before the buzz is still a scroll.
+  const NO_CAST = 'button, input, textarea, select, form, summary, a, .rune, .add-row, .inline-edit, .editing-row, .secret, .new-paper';
+  const castable = (t) => onWall(t) || (!!t.closest('.board-wrap') && !t.closest(NO_CAST));
+  function dropGesture() {
+    if (!gesture) return;
+    clearTimeout(gesture.timer);
+    if (gesture.stroke) gesture.stroke.end(false);
+    gesture = null; document.documentElement.classList.remove('casting');
+  }
   window.addEventListener('pointerdown', (e) => {
-    if (editing || !onWall(e.target)) return;
-    gesture = { x: e.clientX, y: e.clientY, pts: [{ x: e.clientX, y: e.clientY }], drawing: false, id: e.pointerId, stroke: null };
+    if (editing || askOpen || !castable(e.target)) return;
+    gesture = { x: e.clientX, y: e.clientY, pts: [{ x: e.clientX, y: e.clientY }], drawing: false, id: e.pointerId, stroke: null, paper: !onWall(e.target) };
     gesture.timer = setTimeout(startDrawing, HOLD_MS);
   });
+  // lifting the finger after a spell must not also tap (tick, remove, open) what is under it
+  for (const t of ['click', 'contextmenu']) window.addEventListener(t, (e) => { if (castedAt && performance.now() - castedAt < 600) { e.stopPropagation(); e.preventDefault(); } }, true);
   window.addEventListener('pointermove', (e) => {
     if (!gesture || e.pointerId !== gesture.id) return;
     const p = { x: e.clientX, y: e.clientY };
@@ -1055,16 +1117,18 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
   function openSpellbook() {
     const wrap = document.createElement('div'); wrap.className = 'modal-wrap spellbook-wrap';
     const lv = level();
-    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>You learn new spells as you level up. To cast, hold still on bare wall (or the sign) until it buzzes, then draw the shape in one stroke.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
+    wrap.innerHTML = `<div class="modal-card spellbook"><h3>Spellbook</h3><p>New spells come as you level up. To cast, hold your finger still anywhere on the wall, the sign, a paper or a quest (not on a button) until it buzzes, then draw the shape in one stroke.</p><ol class="spell-list"></ol><div class="modal-row"><span class="status">Level ${lv}</span><button class="btn" type="button">Close</button></div></div>`;
     const list = $('.spell-list', wrap);
-    for (const sp of SPELLS) {
-      const ok = learned(sp.id);
-      const li = document.createElement('li'); li.className = ok ? 'known' : 'locked';
+    // 0.7.0: only the spells you own; what comes next stays a surprise
+    const owned = SPELLS.filter((sp) => learned(sp.id));
+    if (!owned.length) { const e = document.createElement('li'); e.className = 'empty-book'; e.textContent = 'The pages are blank. Keep clearing quests; something will appear.'; list.appendChild(e); }
+    for (const sp of owned) {
+      const li = document.createElement('li'); li.className = 'known';
       li.innerHTML = `<b></b><span class="req"></span><small></small>`;
-      $('b', li).textContent = sp.name;
-      $('.req', li).textContent = ok ? 'learned' : sp.scroll ? 'find its scroll' : `level ${sp.level}`;
-      $('small', li).textContent = sp.how;
-      if (ok && sp.toggle) {
+      $('b', li).textContent = spellName(sp);
+      $('.req', li).textContent = 'learned';
+      $('small', li).textContent = spellHow(sp);
+      if (sp.toggle) {
         const t = document.createElement('button'); t.type = 'button'; t.className = 'btn seg' + (spellOn(sp.id) ? ' on' : '');
         t.textContent = spellOn(sp.id) ? 'on' : 'off';
         t.addEventListener('click', () => { prefs.spells = prefs.spells || {}; prefs.spells[sp.id] = !spellOn(sp.id); savePrefs(); refreshMagicUi(); t.textContent = spellOn(sp.id) ? 'on' : 'off'; t.classList.toggle('on', spellOn(sp.id)); });
@@ -1123,11 +1187,19 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 1300);
   }
-  function toast(text) {
+  // toast(text) shows a note; toast(text, onUndo) adds an Undo button that stays for 7 seconds (0.7.0)
+  function toast(text, onUndo) {
     $$('.toast').forEach((t) => t.remove());
     const el = document.createElement('div'); el.className = 'toast'; el.textContent = text;
+    if (onUndo) {
+      el.classList.add('has-undo');
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-undo'; b.textContent = 'Undo';
+      b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      b.addEventListener('click', (e) => { e.stopPropagation(); el.remove(); onUndo(); });
+      el.appendChild(b);
+    }
     document.body.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
+    setTimeout(() => el.remove(), onUndo ? 7000 : 3000);
   }
 
   // ---------- theme / prefs ----------

@@ -9,7 +9,7 @@ src="$here/../../src/renderer"
 assets="$here/../../assets"
 www="$here/../app/src/main/assets/www"
 mkdir -p "$www/fonts"
-cp "$src/fx.js" "$src/merge.js" "$src/magic.js" "$www/"
+cp "$src/fx.js" "$src/merge.js" "$src/magic.js" "$src/ranks.js" "$www/"
 sed 's#\.\./\.\./assets/##g' "$src/sound.js" > "$www/sound.js"
 mkdir -p "$www/sfx/cut" "$www/tex"
 find "$www/sfx/cut" -name "*.ogg" -delete   # the clip set changes between releases

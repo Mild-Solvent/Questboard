@@ -205,7 +205,7 @@ async function waitHealth() {
     // editing (0.4.7): hold a quest to rename it; its ticks follow it
     const hold = async (sel) => {
       const b = await page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return { x: r.left + Math.min(60, r.width / 2), y: r.top + r.height / 2 }; });
-      await page.mouse.move(b.x, b.y); await page.mouse.down(); await sleep(700); await page.mouse.up();
+      await page.mouse.move(b.x, b.y); await page.mouse.down(); await sleep(950); await page.mouse.up();   // 0.7.0: edit hold is 750 ms (a spell arms at 380)
       await page.waitForSelector('#ask:not([hidden])', { timeout: 2000 });   // editing asks first
       await page.click('#ask-yes');
       await page.waitForSelector('.inline-edit', { timeout: 2000 });
@@ -272,6 +272,15 @@ async function waitHealth() {
     check('remove asks first', /Remove this quest/.test(await page.textContent('#ask-title')));
     await page.click('#ask-no');
     check('cancel keeps the quest', (await page.locator('.board.daily .quest:has-text("Buy milk")').count()) === 1);
+    // 0.7.0: a removed quest can be brought back from the toast
+    await page.click('.board.daily .quest:has-text("Buy milk") .del');
+    await page.waitForSelector('#ask:not([hidden])', { timeout: 2000 });
+    await page.click('#ask-yes');
+    await sleep(700);
+    const goneQ = (await page.locator('.board.daily .quest:has-text("Buy milk")').count()) === 0;
+    await page.click('.toast .toast-undo');
+    await sleep(300);
+    check('0.7.0: remove + Undo brings the quest back', goneQ && (await page.locator('.board.daily .quest:has-text("Buy milk")').count()) === 1);
 
     // XP reset (0.5.1): asks twice, sets resetAt, keeps the history, syncs
     const logBefore = JSON.parse(await (await fetch(`${SYNC_URL}/progress.json`, { headers: { Authorization: `Bearer ${token}` } })).text()).log.length;
@@ -307,7 +316,8 @@ async function waitHealth() {
     await page.waitForSelector('#sheet:not([hidden])');
     await page.click('#btn-spellbook');
     await page.waitForSelector('.spellbook-wrap .spell-list li');
-    check('0.6.1: spellbook lists eleven spells', (await page.locator('.spellbook-wrap .spell-list li').count()) === 11, String(await page.locator('.spellbook-wrap .spell-list li').count()));
+    const book = await page.$$eval('.spellbook-wrap .spell-list li', (els) => els.map((e) => e.className));
+    check('0.7.0: spellbook shows only owned spells (no locked ones)', book.length >= 1 && book.every((c) => c === 'known' || c === 'empty-book'), book.join(','));
     await page.evaluate(() => window.__qbBack());
     check('0.6.0: back closes the spellbook', (await page.locator('.spellbook-wrap').count()) === 0);
     await page.click('#btn-wall');
@@ -324,6 +334,29 @@ async function waitHealth() {
     await sleep(300);
     check('0.6.0: hold still on the wall starts casting', casting);
     check('0.6.0: cast leaves casting mode', !(await page.evaluate(() => document.documentElement.classList.contains('casting'))));
+    // 0.7.0: a spell can start on a quest (not only bare wall); lifting the finger ticks nothing and opens nothing
+    const qsel = '.board-wrap:not(.featured) .quest:not(.done) .quest-text';
+    const openBefore = await page.textContent('#stat-open');
+    const qb = await page.$eval(qsel, (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; });
+    await page.mouse.move(qb.x, qb.y); await page.mouse.down(); await sleep(500);
+    const castingOnQuest = await page.evaluate(() => document.documentElement.classList.contains('casting'));
+    for (let i = 1; i <= 10; i++) await page.mouse.move(qb.x + i * 8, qb.y + i * 14);
+    await page.mouse.up();
+    await sleep(900);
+    check('0.7.0: hold still on a quest starts casting', castingOnQuest);
+    check('0.7.0: casting over a quest does not tick it or open the editor', (await page.textContent('#stat-open')) === openBefore && (await page.$eval('#ask', (e) => e.hidden)) && (await page.locator('.inline-edit').count()) === 0);
+    // 0.7.0: ticking a quest keeps the wall where it was (no jump to the top)
+    await page.evaluate(() => { const b = document.querySelector('#boards'); b.scrollTop = Math.min(260, b.scrollHeight - b.clientHeight); });
+    await sleep(200);
+    const st0 = await page.$eval('#boards', (b) => b.scrollTop);
+    const runeSel = await page.evaluate(() => {
+      const b = document.querySelector('#boards').getBoundingClientRect();
+      const r = [...document.querySelectorAll('.board-wrap:not(.featured) .quest:not(.done) .rune')].find((x) => { const q = x.getBoundingClientRect(); return q.top > b.top + 10 && q.bottom < b.bottom - 10; });
+      if (!r) return null; r.setAttribute('data-test-rune', '1'); return '[data-test-rune="1"]';
+    });
+    if (runeSel) { await page.click(runeSel); await sleep(1800); }
+    const st1 = await page.$eval('#boards', (b) => b.scrollTop);
+    check('0.7.0: ticking a quest keeps the scroll position', !!runeSel && st0 > 0 && Math.abs(st1 - st0) < 3, `${st0} -> ${st1}`);
 
     // offline (Father's phone, 0.5.1): sync fails with a long error, the layout must not get wider than
     // the screen, and quests added meanwhile are pushed once the server is reachable again
@@ -375,13 +408,23 @@ async function waitHealth() {
     await page.keyboard.press('Escape').catch(() => {});
     await page.evaluate(() => { const i = document.querySelector('.board-wrap[data-group="Spare"] .add-input'); if (i) i.blur(); });
     await sleep(300);
-    check('0.6.2: an empty paper shows a take-down ✕, a paper with quests does not', (await page.locator('.board-wrap[data-group="Garage"] .board-remove').count()) === 0 && (await page.locator('.board-wrap[data-group="Spare"] .board-remove').count()) === 1);
+    check('0.7.0: every paper shows a take-down ✕', (await page.locator('.board-wrap[data-group="Garage"] .board-remove').count()) === 1 && (await page.locator('.board-wrap[data-group="Spare"] .board-remove').count()) === 1);
     await page.click('.board-wrap[data-group="Spare"] .board-remove');
     await page.waitForSelector('#ask:not([hidden])');
     check('0.6.2: taking a paper down asks first', /Take this paper down/.test(await page.textContent('#ask-title')));
     await page.click('#ask-yes');
     await sleep(800);
     check('0.6.2: the empty paper is gone', (await page.locator('.board-wrap[data-group="Spare"]').count()) === 0);
+    // 0.7.0: a paper with quests comes down too (asks, says what goes with it) and Undo pins it back
+    await page.click('.board-wrap[data-group="Garage"] .board-remove');
+    await page.waitForSelector('#ask:not([hidden])');
+    check('0.7.0: taking down a paper with quests asks and names what goes', /comes off the wall/.test(await page.textContent('#ask-detail')), await page.textContent('#ask-detail'));
+    await page.click('#ask-yes');
+    await sleep(800);
+    const goneP = (await page.locator('.board-wrap[data-group="Garage"]').count()) === 0;
+    await page.click('.toast .toast-undo');
+    await sleep(400);
+    check('0.7.0: paper + Undo brings it back with its quests', goneP && (await page.locator('.board-wrap[data-group="Garage"] .quest-text:has-text("Fix the bike")').count()) === 1);
     const npw = await page.evaluate(() => document.documentElement.scrollWidth);
     check('0.6.2: new paper keeps the phone width', npw <= 390, String(npw));
     await page.screenshot({ path: path.join(outDir, 'phone-new-paper.png') });
