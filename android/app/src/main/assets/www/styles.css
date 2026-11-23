@@ -877,8 +877,8 @@ html.vortex #boards { animation: vortex 1.5s cubic-bezier(.5,0,.3,1); transform-
 /* papers fly in once at start; a re-render (ticking a quest, a sync) no longer replays it */
 html.booted .board-wrap:not(.nailing) { animation: none; }
 /* toasts with an Undo button */
-.toast.has-undo { pointer-events: auto; display: flex; align-items: center; gap: 12px; animation-duration: 7s; }
-.toast .toast-undo { border: 0; border-radius: 7px; padding: 4px 12px; font: 700 12.5px var(--font-body); letter-spacing: .5px; cursor: pointer; color: var(--rune-ink, #1a0d06); background: var(--accent); box-shadow: 0 0 10px var(--glow); }
+.toast.has-undo { pointer-events: auto; display: flex; align-items: center; animation-duration: 7s; }
+.toast .toast-undo { margin-left: 12px; border: 0; border-radius: 7px; padding: 4px 12px; font: 700 12.5px var(--font-body); letter-spacing: .5px; cursor: pointer; color: var(--rune-ink, #1a0d06); background: var(--accent); box-shadow: 0 0 10px var(--glow); }
 .toast .toast-undo:hover { filter: brightness(1.15); }
 /* "are you sure?" */
 .confirm-wrap { z-index: 70; }
