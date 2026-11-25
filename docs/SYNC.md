@@ -62,6 +62,22 @@ cat ~/questboard-sam-data/token
 
 Their address ends in `/questboard-sam`. The two boards never mix.
 
+Or keep one server and give each person a board on it:
+
+```bash
+python3 sync-server/server.py create-board sam     # prints the folder; the token is in <folder>/token
+```
+
+Sam's address is `https://<your-machine>/questboard/u/sam` with the token from
+`~/questboard-data/boards/sam/token`. A token only opens its own board. This is
+how the devbox panel gives every signed-in admin their own Questboard.
+
+### Linking a device that already has quests
+
+When you save a new address or token in the app, it forgets what the old board
+looked like and does its first sync as a merge: quests from the device and from
+the server are added together, both ways. Nothing is deleted on either side.
+
 ## Backups
 
 The server keeps a copy of both files on every change, in

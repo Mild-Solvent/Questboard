@@ -1075,7 +1075,11 @@
   async function saveSettingsFromModal() {
     const ok = await testSettings();
     if (!ok) return;
-    settings.sync = { baseUrl: $('#sync-url').value.trim(), token: $('#sync-token').value.trim() };
+    const next = { baseUrl: $('#sync-url').value.trim(), token: $('#sync-token').value.trim() };
+    // Another board (new address or token): forget what the old one looked like, so the first sync
+    // adds this device's quests and the server's together and never deletes anything on either side.
+    if (next.baseUrl !== (settings.sync.baseUrl || '') || next.token !== (settings.sync.token || '')) settings.base = defaultSettings().base;
+    settings.sync = next;
     Sync.configure(settings.sync);
     saveSettings();
     closeSettings();

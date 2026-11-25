@@ -14,6 +14,13 @@ Runs on the devbox; exposed through `tailscale funnel`. Stdlib only.
 Every accepted write that changes a file is also kept in <data>/history/<file>/<UTC time>.<ext>,
 so any earlier board can be restored (fetch a version, then PUT it back like a normal edit).
 Files allowed: QUESTS.md, progress.json. Data dir and token file come from env or defaults.
+
+More boards on the same server (one per person, e.g. one per devbox panel admin):
+  /questboard/u/<name>/<file>, /questboard/u/<name>/health, /questboard/u/<name>/history/...
+Each one lives in <data>/boards/<name>/ with its own token file, so a token only opens its own board.
+The main board (the URLs without /u/<name>) stays exactly where it was. Boards are made from the
+command line, never over HTTP:
+  python3 server.py create-board <name>     (prints the board folder; the token is in <folder>/token)
 """
 import hashlib
 import json
@@ -31,51 +38,87 @@ PORT = int(os.environ.get("QB_PORT", "8787"))
 PREFIX = "/" + os.environ.get("QB_PREFIX", "questboard").strip("/") + "/"   # URL path, e.g. QB_PREFIX=questboard-sam
 FILES = {"QUESTS.md": "text/markdown; charset=utf-8", "progress.json": "application/json; charset=utf-8"}
 LOCK = threading.Lock()
-HISTORY_DIR = os.path.join(DATA_DIR, "history")
+BOARDS_DIR = os.path.join(DATA_DIR, "boards")
+BOARD_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 HISTORY_KEEP = int(os.environ.get("QB_HISTORY_KEEP", "5000"))   # versions kept per file (they are a few KB each)
 VERSION_ID = re.compile(r"^\d{8}T\d{6}\d{6}Z\.(md|json)$")
 
 
-def load_token():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+def load_token(token_file=TOKEN_FILE):
+    os.makedirs(os.path.dirname(token_file), exist_ok=True)
+    if not os.path.exists(token_file):
+        fd = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(secrets.token_urlsafe(32) + "\n")
-        os.chmod(TOKEN_FILE, 0o600)
-    with open(TOKEN_FILE, encoding="utf-8") as f:
+    with open(token_file, encoding="utf-8") as f:
         return f.read().strip()
 
 
-TOKEN = load_token()
+class Board:
+    """One person's quest files: the main board (DATA_DIR) or <data>/boards/<name>/."""
+
+    def __init__(self, data_dir, token_file):
+        self.data_dir = data_dir
+        self.token_file = token_file
+
+    def token(self):
+        try:
+            with open(self.token_file, encoding="utf-8") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+
+
+MAIN = Board(DATA_DIR, TOKEN_FILE)
+
+
+def board_for(name):
+    """The named extra board, or None when there is no such board (boards are never made over HTTP)."""
+    if not BOARD_NAME.match(name or ""):
+        return None
+    d = os.path.join(BOARDS_DIR, name)
+    tf = os.path.join(d, "token")
+    if not os.path.isfile(tf):
+        return None
+    return Board(d, tf)
+
+
+def create_board(name):
+    if not BOARD_NAME.match(name or ""):
+        raise SystemExit(f"bad board name {name!r}: use a-z, 0-9, - and _ (max 32)")
+    d = os.path.join(BOARDS_DIR, name)
+    os.makedirs(d, exist_ok=True)
+    load_token(os.path.join(d, "token"))
+    return d
 
 
 def etag_of(data: bytes) -> str:
     return '"' + hashlib.sha256(data).hexdigest() + '"'
 
 
-def read_file(name):
-    p = os.path.join(DATA_DIR, name)
+def read_file(board, name):
+    p = os.path.join(board.data_dir, name)
     if not os.path.exists(p):
         return None
     with open(p, "rb") as f:
         return f.read()
 
 
-def write_file(name, data: bytes):
-    p = os.path.join(DATA_DIR, name)
+def write_file(board, name, data: bytes):
+    p = os.path.join(board.data_dir, name)
     tmp = p + ".tmp"
     with open(tmp, "wb") as f:
         f.write(data)
     os.replace(tmp, p)
 
 
-def history_dir(name):
-    return os.path.join(HISTORY_DIR, name)
+def history_dir(board, name):
+    return os.path.join(board.data_dir, "history", name)
 
 
-def snapshot(name, data: bytes):
+def snapshot(board, name, data: bytes):
     """Keep a copy of this version of `name`; skip if identical to the newest kept copy."""
-    d = history_dir(name)
+    d = history_dir(board, name)
     os.makedirs(d, exist_ok=True)
     versions = sorted(os.listdir(d))
     if versions:
@@ -103,8 +146,8 @@ def summarize(name, data: bytes):
         return {}
 
 
-def list_history(name, limit=400):
-    d = history_dir(name)
+def list_history(board, name, limit=400):
+    d = history_dir(board, name)
     if not os.path.isdir(d):
         return []
     out = []
@@ -138,52 +181,60 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _authed(self):
+    def _authed(self, board):
         auth = self.headers.get("Authorization", "")
-        return auth.startswith("Bearer ") and secrets.compare_digest(auth[7:].strip(), TOKEN)
+        token = board.token()
+        return bool(token) and auth.startswith("Bearer ") and secrets.compare_digest(auth[7:].strip().encode(), token.encode())
 
     def _route(self):
+        """(board, rest of the path) or (None, None). /u/<name>/... picks an extra board."""
         if not self.path.startswith(PREFIX):
-            return None
+            return None, None
         name = self.path[len(PREFIX):].split("?")[0]
-        return name
+        if name.startswith("u/"):
+            parts = name.split("/", 2)
+            board = board_for(parts[1]) if len(parts) == 3 else None
+            return (board, parts[2]) if board else (None, None)
+        return MAIN, name
 
     def do_OPTIONS(self):
         self._send(204, b"")
 
     def do_GET(self):
-        name = self._route()
+        board, name = self._route()
+        if board is None:
+            return self._send(404, b'{"error":"not found"}')
         if name == "health":
             return self._send(200, b'{"ok":true}')
         if name and name.startswith("history/"):
-            if not self._authed():
+            if not self._authed(board):
                 return self._send(401, b'{"error":"unauthorized"}')
             parts = name.split("/")
             if len(parts) == 2 and parts[1] in FILES:
                 with LOCK:
-                    items = list_history(parts[1])
+                    items = list_history(board, parts[1])
                 return self._send(200, json.dumps(items).encode())
             if len(parts) == 3 and parts[1] in FILES and VERSION_ID.match(parts[2]):
-                p = os.path.join(history_dir(parts[1]), parts[2])
+                p = os.path.join(history_dir(board, parts[1]), parts[2])
                 if os.path.exists(p):
                     with open(p, "rb") as f:
                         return self._send(200, f.read(), FILES[parts[1]])
             return self._send(404, b'{"error":"not found"}')
         if name not in FILES:
             return self._send(404, b'{"error":"not found"}')
-        if not self._authed():
+        if not self._authed(board):
             return self._send(401, b'{"error":"unauthorized"}')
         with LOCK:
-            data = read_file(name)
+            data = read_file(board, name)
         if data is None:
             return self._send(404, b'{"error":"no such file yet"}')
         self._send(200, data, FILES[name], etag_of(data))
 
     def do_PUT(self):
-        name = self._route()
-        if name not in FILES:
+        board, name = self._route()
+        if board is None or name not in FILES:
             return self._send(404, b'{"error":"not found"}')
-        if not self._authed():
+        if not self._authed(board):
             return self._send(401, b'{"error":"unauthorized"}')
         length = int(self.headers.get("Content-Length", "0"))
         if length > 2_000_000:
@@ -196,24 +247,32 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, b'{"error":"progress.json must be valid JSON"}')
         if_match = self.headers.get("If-Match")
         with LOCK:
-            current = read_file(name)
+            current = read_file(board, name)
             if current is not None:
                 if if_match is None or if_match.strip() != etag_of(current):
                     return self._send(412, current, FILES[name], etag_of(current))
-            write_file(name, body)
+            write_file(board, name, body)
             try:
-                snapshot(name, body)
+                snapshot(board, name, body)
             except OSError as e:  # a failed backup must never fail the write itself
                 sys.stderr.write(f"history snapshot failed for {name}: {e}\n")
         self._send(200 if current is not None else 201, b'{"ok":true}', etag=etag_of(body))
 
 
 def main():
+    if sys.argv[1:2] == ["create-board"] and len(sys.argv) == 3:
+        print(create_board(sys.argv[2]))
+        return
     os.makedirs(DATA_DIR, exist_ok=True)
-    for name in FILES:  # make sure the current board is in the history from the first start on
-        data = read_file(name)
-        if data is not None:
-            snapshot(name, data)
+    load_token()
+    boards = [MAIN]
+    if os.path.isdir(BOARDS_DIR):
+        boards += [b for b in (board_for(n) for n in sorted(os.listdir(BOARDS_DIR))) if b]
+    for board in boards:  # make sure every current board is in its history from the first start on
+        for name in FILES:
+            data = read_file(board, name)
+            if data is not None:
+                snapshot(board, name, data)
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"questboard sync on http://127.0.0.1:{PORT}{PREFIX}  data={DATA_DIR}", flush=True)
     httpd.serve_forever()

@@ -1,9 +1,12 @@
 // Browser stand-in for the Electron preload bridge (src/preload.js).
 // Data files live in localStorage; sync goes through whatever window.QB_WEB points at
 // (by default a same-origin proxy that adds the Bearer token server-side).
+// When the page is served to several people (the devbox panel has one board per admin), the server
+// puts the signed-in person in QB_WEB.user, and each person's copy is kept under its own keys, so one
+// person's cached board can never be merged into another person's board in a shared browser.
 (function () {
-  const KEY = (name) => `questboard:${name}`;
-  const cfg = Object.assign({ baseUrl: '', token: '', version: 'web', device: 'web' }, window.QB_WEB || {});
+  const cfg = Object.assign({ baseUrl: '', token: '', version: 'web', device: 'web', user: '' }, window.QB_WEB || {});
+  const KEY = (name) => (cfg.user ? `questboard:${cfg.user}:${name}` : `questboard:${name}`);
   const store = {
     get(name) { try { return localStorage.getItem(KEY(name)); } catch { return null; } },
     set(name, text) { try { localStorage.setItem(KEY(name), text); } catch { /* private mode etc. */ } },

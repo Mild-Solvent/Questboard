@@ -1516,9 +1516,11 @@ This is your questboard. Set up sync in the settings (gear icon) to see the same
     });
     $('#set-save').addEventListener('click', async () => {
       const v = readSheet();
-      const changedUrl = v.syncUrl !== (prefs.syncUrl || '');
+      // another board (new address or token): forget the old base, so the first sync adds the phone's
+      // quests and the server's together and never deletes anything on either side
+      const changedBoard = v.syncUrl !== (prefs.syncUrl || '') || v.token !== (prefs.token || '');
       Object.assign(prefs, v); savePrefs();
-      if (changedUrl) Sync.reset();
+      if (changedBoard) Sync.reset();
       configureSync();
       if (!Sync.isConfigured()) { setSheetStatus('', 'Saved. Sync is off until both the address and the token are filled in.'); return; }
       setSheetStatus('', 'Saved. Syncing…');
